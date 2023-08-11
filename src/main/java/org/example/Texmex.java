@@ -45,25 +45,23 @@ public class Texmex {
         System.out.format("HNSW: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 topK, recall, buildNanos / 1_000_000_000.0, queryNanos / 1_000_000_000.0, pqr.nodesVisited);
 
-        IntStream.range(1, 5).forEach(i -> {
-            float alpha = (float) Math.pow(2, i);
-            var vStart = System.nanoTime();
-            ResultSummary vqr;
-            long vBuildNanos;
-            try {
-                // x2 b/c OnHeapHnswGraph doubles connections on L0
-                var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, alpha)).get();
-                vBuildNanos = System.nanoTime() - vStart;
-                vStart = System.nanoTime();
-                vqr = vamanaQueries(vBuilder, vamana, queryVectors, groundTruth, ravv, topK, queryRuns);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-            var vQueryNanos = System.nanoTime() - vStart;
-            var vRecall = ((double) vqr.topKFound) / (queryRuns * queryVectors.size() * topK);
-            System.out.format("With Vamana@%s: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                    alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
-        });
+        var vStart = System.nanoTime();
+        ResultSummary vqr;
+        long vBuildNanos;
+        float alpha = 1.5f;
+        try {
+            // x2 b/c OnHeapHnswGraph doubles connections on L0
+            var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, alpha)).get();
+            vBuildNanos = System.nanoTime() - vStart;
+            vStart = System.nanoTime();
+            vqr = vamanaQueries(vamana, queryVectors, groundTruth, ravv, topK, queryRuns);
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+        var vQueryNanos = System.nanoTime() - vStart;
+        var vRecall = ((double) vqr.topKFound) / (queryRuns * queryVectors.size() * topK);
+        System.out.format("Vamana@%s: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
+                alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
 
         es.shutdown();
     }
@@ -78,20 +76,21 @@ public class Texmex {
 
     private record ResultSummary(int topKFound, int nodesVisited) { }
 
-    private static ResultSummary vamanaQueries(VamanaGraphBuilder<float[]> builder, ConcurrentVamanaGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
+    private static ResultSummary vamanaQueries(ConcurrentVamanaGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
+        var greedySearcher = ThreadLocal.withInitial(() -> new VamanaSearcher<>(vamana, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT));
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = queryVectors.get(i);
-                VamanaGraphBuilder.QueryResult qr;
+                VamanaSearcher.QueryResult qr;
                 try {
-                    qr = builder.greedySearch(vamana, queryVector, 16 * topK);
+                    qr = greedySearcher.get().search(queryVector, 2 * topK);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
                 var gt = groundTruth.get(i);
-                int[] resultNodes = qr.results.nodesCopy();
+                int[] resultNodes = qr.results.node();
                 var n = IntStream.range(0, Math.min(resultNodes.length, topK)).filter(j -> gt.contains(resultNodes[j])).count();
                 topKfound.add(n);
                 nodesVisited.add(qr.visitedCount);
@@ -108,7 +107,7 @@ public class Texmex {
                 var queryVector = queryVectors.get(i);
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(queryVector, 4 * topK, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    nn = HnswGraphSearcher.search(queryVector, topK, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
