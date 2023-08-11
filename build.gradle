@@ -22,14 +22,9 @@ test {
     useJUnitPlatform()
 }
 
-task runSimple(type: JavaExec) {
+task runBench(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'org.example.SimpleExample'
-}
-
-task runTexmex(type: JavaExec) {
-    classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'org.example.Texmex'
+    mainClass = 'org.example.Bench'
     if (project.hasProperty('siftName')) {
         args siftName
     }

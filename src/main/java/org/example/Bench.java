@@ -18,10 +18,7 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.IntStream;
 
-/**
- * Tests HNSW against vectors from the Texmex dataset
- */
-public class Texmex {
+public class Bench {
     public static void testRecall(List<float[]> baseVectors, List<float[]> queryVectors, List<Set<Integer>> groundTruth) throws IOException, ExecutionException, InterruptedException {
         var ravv = new ListRandomAccessVectorValues(baseVectors, baseVectors.get(0).length);
         var topK = groundTruth.get(0).size();

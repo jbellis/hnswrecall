@@ -1,16 +1,23 @@
-# HNSW demos
+# HNSW benchmarking with recall
 
-This provides two classes illustrating the usage of Lucene's HNSW approximate nearest-neighbor (ANN) index.
-See the [Lucene JIRA issue](https://issues.apache.org/jira/browse/LUCENE-9004) and [the Elastic blog post](https://www.elastic.co/blog/introducing-approximate-nearest-neighbor-search-in-elasticsearch-8-0) for more background, 
+This repository provides a `Bench` class that benchmarks build time, throughput, and accuracy (recall) for the Lucene HNSW implementation. See the [Lucene JIRA issue](https://issues.apache.org/jira/browse/LUCENE-9004) and [the Elastic blog post](https://www.elastic.co/blog/introducing-approximate-nearest-neighbor-search-in-elasticsearch-8-0) for more background, 
 and [the original paper](https://arxiv.org/pdf/1603.09320.pdf) for how it works.
 
-The classes provided are `SimpleExample`, which creates and searches a random graph, and `Texmex`, which tests the recall performance against a dataset with ground truth (i.e. known, exact nearest neighbors) precomputed for each query.
+## Prerequisites
+
+You should use Java 20+ to take advantage of Lucene's SIMD optimizations, otherwise you will be half as fast as you should be.
+
+The gradle build is configured to use a local Lucene build, and it requires Jonathan Ellis's Concurrent HNSW implementation.  For now you can get that from his branch here: https://github.com/jbellis/lucene/tree/concurrent4
+
+Then install it with
+```bash
+$ ./gradlew mavenToLocal
+```
 
 ## Usage
 
 ```bash
-$ ./gradlew runSimple
-$ ./gradlew runTexmex -PsiftName=siftsmall
+$ ./gradlew runBench -PsiftName=siftsmall
 ```
 
 The Texmex datasets may be found [here](http://corpus-texmex.irisa.fr/). 
