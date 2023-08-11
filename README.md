@@ -25,4 +25,4 @@ Currently it's hardoded to look for the nytimes dataset in a subdirectory `hdf5/
 $ ./gradlew runBench
 ```
 
-It will take 1-2 minutes to run with the default settings.
+It takes about 90s to run on my 16 core / 24 thread machine, it's close to perfectly linear wrt number of threads.
