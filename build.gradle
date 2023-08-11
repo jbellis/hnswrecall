@@ -28,6 +28,6 @@ task runBench(type: JavaExec) {
     if (project.hasProperty('siftName')) {
         args siftName
     }
-    jvmArgs '--add-modules=jdk.incubator.vector', '-Xmx32G', "-ea"
+    jvmArgs '--add-modules=jdk.incubator.vector', "-ea"
     // jvmArgs '-XX:+FlightRecorder', '-XX:StartFlightRecording:filename=flight.jfr'
 }

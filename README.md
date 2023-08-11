@@ -11,14 +11,18 @@ The gradle build is configured to use a local Lucene build, and it requires Jona
 
 Then install it with
 ```bash
+$ export JAVA_HOME=/path/to/java-20
 $ ./gradlew mavenToLocal
 ```
 
 ## Usage
 
+Download datasets from https://github.com/erikbern/ann-benchmarks/#data-sets.
+
+Currently it's hardoded to look for the nytimes dataset in a subdirectory `hdf5/`.
+
 ```bash
-$ ./gradlew runBench -PsiftName=siftsmall
+$ ./gradlew runBench
 ```
 
-The Texmex datasets may be found [here](http://corpus-texmex.irisa.fr/). 
-The Texmex class expects to find the data files in a subdirectory of the current working directory, as extracted from the dataset `tgz` archive (e.g. `siftsmall`, `sift`, etc.). The `siftsmall` dataset runs in about 2 seconds. The `sift` dataset runs in about 10.5 minutes.
+It will take 1-2 minutes to run with the default settings.

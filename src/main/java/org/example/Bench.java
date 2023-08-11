@@ -26,12 +26,7 @@ public class Bench {
         int beamWidth = 100;
 
         var start = System.nanoTime();
-        var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, M, beamWidth);
-        int buildThreads = 24;
-        var es = Executors.newFixedThreadPool(
-                buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
-        var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
-        var vBuilder = new VamanaGraphBuilder<>(hnsw, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, 2 * beamWidth);
+        ConcurrentOnHeapHnswGraph hnsw = buildGraph(ravv, M, beamWidth);
         long buildNanos = System.nanoTime() - start;
 
         int queryRuns = 10;
@@ -39,30 +34,18 @@ public class Bench {
         var pqr = performQueries(queryVectors, groundTruth, ravv, hnsw::getView, topK, queryRuns);
         long queryNanos = System.nanoTime() - start;
         var recall = ((double) pqr.topKFound) / (queryRuns * queryVectors.size() * topK);
-        System.out.format("HNSW: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                topK, recall, buildNanos / 1_000_000_000.0, queryNanos / 1_000_000_000.0, pqr.nodesVisited);
+        System.out.format("HNSW: top %d recall %.4f, build %.2fs, queryx%d %.2fs. %s nodes visited%n",
+                topK, recall, buildNanos / 1_000_000_000.0, queryRuns, queryNanos / 1_000_000_000.0, pqr.nodesVisited);
+    }
 
-        IntStream.range(1, 5).forEach(i -> {
-            float alpha = (float) Math.pow(2, i);
-            var vStart = System.nanoTime();
-            ResultSummary vqr;
-            long vBuildNanos;
-            try {
-                // x2 b/c OnHeapHnswGraph doubles connections on L0
-                var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, alpha)).get();
-                vBuildNanos = System.nanoTime() - vStart;
-                vStart = System.nanoTime();
-                vqr = vamanaQueries(vBuilder, vamana, queryVectors, groundTruth, ravv, topK, queryRuns);
-            } catch (Exception e) {
-                throw new RuntimeException(e);
-            }
-            var vQueryNanos = System.nanoTime() - vStart;
-            var vRecall = ((double) vqr.topKFound) / (queryRuns * queryVectors.size() * topK);
-            System.out.format("With Vamana@%s: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                    alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
-        });
-
+    private static ConcurrentOnHeapHnswGraph buildGraph(ListRandomAccessVectorValues ravv, int M, int beamWidth) throws IOException, InterruptedException, ExecutionException {
+        var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, M, beamWidth);
+        int buildThreads = Runtime.getRuntime().availableProcessors();
+        var es = Executors.newFixedThreadPool(
+                buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
+        var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         es.shutdown();
+        return hnsw;
     }
 
     private static float normOf(float[] baseVector) {
@@ -75,28 +58,6 @@ public class Bench {
 
     private record ResultSummary(int topKFound, int nodesVisited) { }
 
-    private static ResultSummary vamanaQueries(VamanaGraphBuilder<float[]> builder, ConcurrentVamanaGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
-        LongAdder topKfound = new LongAdder();
-        LongAdder nodesVisited = new LongAdder();
-        for (int k = 0; k < queryRuns; k++) {
-            IntStream.range(0, queryVectors.size()).parallel().forEach(i -> {
-                var queryVector = queryVectors.get(i);
-                VamanaGraphBuilder.QueryResult qr;
-                try {
-                    qr = builder.greedySearch(vamana, queryVector, 16 * topK);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-                var gt = groundTruth.get(i);
-                int[] resultNodes = qr.results.nodesCopy();
-                var n = IntStream.range(0, Math.min(resultNodes.length, topK)).filter(j -> gt.contains(resultNodes[j])).count();
-                topKfound.add(n);
-                nodesVisited.add(qr.visitedCount);
-            });
-        }
-        return new ResultSummary((int) topKfound.sum(), (int) nodesVisited.sum());
-    }
-
     private static ResultSummary performQueries(List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, Supplier<HnswGraph> graphSupplier, int topK, int queryRuns) {
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
@@ -105,7 +66,12 @@ public class Bench {
                 var queryVector = queryVectors.get(i);
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(queryVector, 4 * topK, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    // the code supports for querying for more than topK, and then using
+                    // just the topK results to get more accuracy
+                    // (see FAQ entry about "LIMIT 2 query will return a better result in the first row than a LIMIT 1 query"
+                    // in https://docs.google.com/document/d/1P_elPGmuiwuwzzIkYMie6z4gmKH3XX8qGaNso4NyY-Q)
+                    int overquery = topK; // 4 * topK
+                    nn = HnswGraphSearcher.search(queryVector, overquery, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -137,6 +103,7 @@ public class Bench {
         List<float[]> scrubbedQueryVectors = new ArrayList<>(queryVectors.length);
         List<Set<Integer>> gtSet = new ArrayList<>(groundTruth.length);
         // remove zero vectors, noting that this will change the indexes of the ground truth answers
+        // [nytimes dataset includes zero vectors, wtf were they thinking]
         Map<Integer, Integer> rawToScrubbed = new HashMap<>();
         {
             int j = 0;
@@ -182,36 +149,9 @@ public class Bench {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
-        new Thread(() -> {
-            try {
-                computeRecallFor("hdf5/nytimes-256-angular.hdf5");
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
-            }
-        }).run();
-//        new Thread(() -> {
-//            try {
-//                computeRecallFor("hdf5/glove-100-angular.hdf5");
-//            } catch (Throwable e) {
-//                throw new RuntimeException(e);
-//            }
-//        }).run();
-//        new Thread(() -> {
-//            try {
-//                computeRecallFor("hdf5/glove-200-angular.hdf5");
-//            } catch (Throwable e) {
-//                throw new RuntimeException(e);
-//            }
-//        }).run();
-//        new Thread(() -> {
-//            try {
-//                computeRecallFor("hdf5/deep-image-96-angular.hdf5");
-//            } catch (Throwable e) {
-//                throw new RuntimeException(e);
-//            }
-//        }).start();
+        computeRecallFor("hdf5/nytimes-256-angular.hdf5");
     }
 }
