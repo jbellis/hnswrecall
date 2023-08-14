@@ -187,6 +187,17 @@ public class Texmex {
     public static void main(String[] args) {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
+        // angular
         computeRecallFor("hdf5/nytimes-256-angular.hdf5");
+        computeRecallFor("hdf5/glove-100-angular.hdf5");
+        computeRecallFor("hdf5/glove-200-angular.hdf5");
+
+        // euclidean
+        computeRecallFor("hdf5/sift-128-euclidean.hdf5");
+        computeRecallFor("hdf5/fashion-mnist-784-euclidean.hdf5");
+
+        // need large file support
+//        computeRecallFor("hdf5/deep-image-96-angular.hdf5");
+//        computeRecallFor("hdf5/gist-960-euclidean.hdf5");
     }
 }
