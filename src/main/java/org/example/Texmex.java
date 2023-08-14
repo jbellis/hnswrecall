@@ -187,33 +187,6 @@ public class Texmex {
     public static void main(String[] args) {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
-        new Thread(() -> {
-            try {
-                computeRecallFor("hdf5/nytimes-256-angular.hdf5");
-            } catch (Throwable e) {
-                throw new RuntimeException(e);
-            }
-        }).run();
-//        new Thread(() -> {
-//            try {
-//                computeRecallFor("hdf5/glove-100-angular.hdf5");
-//            } catch (Throwable e) {
-//                throw new RuntimeException(e);
-//            }
-//        }).run();
-//        new Thread(() -> {
-//            try {
-//                computeRecallFor("hdf5/glove-200-angular.hdf5");
-//            } catch (Throwable e) {
-//                throw new RuntimeException(e);
-//            }
-//        }).run();
-//        new Thread(() -> {
-//            try {
-//                computeRecallFor("hdf5/deep-image-96-angular.hdf5");
-//            } catch (Throwable e) {
-//                throw new RuntimeException(e);
-//            }
-//        }).start();
+        computeRecallFor("hdf5/nytimes-256-angular.hdf5");
     }
 }
