@@ -31,7 +31,7 @@ public class Bench {
         // build the graphs on multiple threads
         var start = System.nanoTime();
         var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth);
-        int buildThreads = 24;
+        int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         var vBuilder = new VamanaGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, 1.4f);
