@@ -21,7 +21,7 @@ import java.util.stream.IntStream;
 /**
  * Tests HNSW against vectors from the Texmex dataset
  */
-public class Texmex {
+public class Bench {
     public static void testRecall(int M, int beamWidth, VectorSimilarityFunction similarityFunction, List<float[]> baseVectors, List<float[]> queryVectors, List<Set<Integer>> groundTruth)
             throws IOException, ExecutionException, InterruptedException
     {
