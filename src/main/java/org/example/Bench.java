@@ -83,7 +83,7 @@ public class Bench {
                 var queryVector = queryVectors.get(i);
                 VamanaSearcher.QueryResult qr;
                 try {
-                    qr = greedySearcher.get().search(queryVector, 2 * topK);
+                    qr = greedySearcher.get().search(queryVector, topK);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -216,13 +216,15 @@ public class Bench {
                 "hdf5/glove-200-angular.hdf5",
                 "hdf5/sift-128-euclidean.hdf5",
                 "hdf5/fashion-mnist-784-euclidean.hdf5");
+        var mGrid = List.of(16); // List.of(8, 12, 16, 24, 32, 40);
+        var efGrid = List.of(100); // List.of(80, 100, 120, 160, 200, 400);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
         for (var f : files) {
             var ds = load(f);
-            for (int M : List.of(8, 12, 16, 24, 32, 40)) {
-                for (int beamWidth : List.of(80, 100, 120, 160, 200, 400, 600, 800)) {
+            for (int M : mGrid) {
+                for (int beamWidth : efGrid) {
                     testRecall(M, beamWidth, ds);
                 }
             }
