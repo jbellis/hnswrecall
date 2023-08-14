@@ -22,27 +22,27 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
-    public static void testRecall(int M, int beamWidth, VectorSimilarityFunction similarityFunction, List<float[]> baseVectors, List<float[]> queryVectors, List<Set<Integer>> groundTruth)
+    public static void testRecall(int M, int beamWidth, DataSet ds)
             throws IOException, ExecutionException, InterruptedException
     {
-        var ravv = new ListRandomAccessVectorValues(baseVectors, baseVectors.get(0).length);
-        var topK = groundTruth.get(0).size();
+        var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
+        var topK = ds.groundTruth.get(0).size();
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, similarityFunction, M, beamWidth);
+        var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth);
         int buildThreads = 24;
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
-        var vBuilder = new VamanaGraphBuilder<>(hnsw, ravv, VectorEncoding.FLOAT32, similarityFunction, 2 * beamWidth);
+        var vBuilder = new VamanaGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, 1.4f);
         long buildNanos = System.nanoTime() - start;
 
         // query hnsw baseline
         int queryRuns = 10;
         start = System.nanoTime();
-        var pqr = performQueries(queryVectors, groundTruth, ravv, hnsw::getView, topK, queryRuns);
+        var pqr = performQueries(ds.queryVectors, ds.groundTruth, ravv, hnsw::getView, topK, queryRuns);
         long queryNanos = System.nanoTime() - start;
-        var recall = ((double) pqr.topKFound) / (queryRuns * queryVectors.size() * topK);
+        var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
         System.out.format("HNSW M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 M, beamWidth, topK, recall, buildNanos / 1_000_000_000.0, queryNanos / 1_000_000_000.0, pqr.nodesVisited);
 
@@ -52,12 +52,12 @@ public class Bench {
         long vBuildNanos;
         float alpha = 1.5f;
         // x2 b/c OnHeapHnswGraph doubles connections on L0
-        var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, alpha)).get();
+        var vamana = vBuilder.buildAsync(ravv, es, buildThreads).get();
         vBuildNanos = System.nanoTime() - vStart;
         vStart = System.nanoTime();
-        vqr = vamanaQueries(vamana, queryVectors, groundTruth, ravv, topK, queryRuns);
+        vqr = vamanaQueries(vamana, ds.queryVectors, ds.groundTruth, ravv, topK, queryRuns);
         var vQueryNanos = System.nanoTime() - vStart;
-        var vRecall = ((double) vqr.topKFound) / (queryRuns * queryVectors.size() * topK);
+        var vRecall = ((double) vqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
         System.out.format("Vamana M=%d ef=%d alpha=%.2f: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 M, beamWidth, alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
 
@@ -74,7 +74,7 @@ public class Bench {
 
     private record ResultSummary(int topKFound, int nodesVisited) { }
 
-    private static ResultSummary vamanaQueries(ConcurrentVamanaGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
+    private static ResultSummary vamanaQueries(ConcurrentOnHeapHnswGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
         var greedySearcher = ThreadLocal.withInitial(() -> new VamanaSearcher<>(vamana, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT));
@@ -122,7 +122,9 @@ public class Bench {
         return new ResultSummary((int) topKfound.sum(), (int) nodesVisited.sum());
     }
 
-    private static void computeRecallFor(int M, int beamWidth, String pathStr) throws IOException, ExecutionException, InterruptedException {
+    record DataSet(VectorSimilarityFunction similarityFunction, List<float[]> baseVectors, List<float[]> queryVectors, List<Set<Integer>> groundTruth) { }
+
+    private static DataSet load(String pathStr) {
         // infer the similarity
         VectorSimilarityFunction similarityFunction;
         if (pathStr.contains("angular")) {
@@ -193,10 +195,10 @@ public class Bench {
             }
         }
 
-        System.out.format("%s: %d base and %d query vectors loaded, dimensions %d%n",
+        System.out.format("%n%s: %d base and %d query vectors loaded, dimensions %d%n",
                 pathStr, scrubbedBaseVectors.size(), scrubbedQueryVectors.size(), scrubbedBaseVectors.get(0).length);
 
-        testRecall(M, beamWidth, similarityFunction, scrubbedBaseVectors, scrubbedQueryVectors, gtSet);
+        return new DataSet(similarityFunction, scrubbedBaseVectors, scrubbedQueryVectors, gtSet);
     }
 
     private static void normalizeAll(Iterable<float[]> vectors) {
@@ -208,22 +210,22 @@ public class Bench {
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
-        for (int M : List.of(8, 12, 16, 24, 32, 40)) {
-            for (int beamWidth: List.of(80, 100, 120, 160, 200, 400, 600, 800)) {
-                // angular
-                computeRecallFor(M, beamWidth, "hdf5/nytimes-256-angular.hdf5");
-                computeRecallFor(M, beamWidth, "hdf5/glove-100-angular.hdf5");
-                computeRecallFor(M, beamWidth, "hdf5/glove-200-angular.hdf5");
-
-                // euclidean
-                computeRecallFor(M, beamWidth, "hdf5/sift-128-euclidean.hdf5");
-                computeRecallFor(M, beamWidth, "hdf5/fashion-mnist-784-euclidean.hdf5");
-
-                // need large file support
-//              computeRecallFor(M, beamWidth, "hdf5/deep-image-96-angular.hdf5");
-//              computeRecallFor(M, beamWidth, "hdf5/gist-960-euclidean.hdf5");
+        var files = List.of(
+                "hdf5/nytimes-256-angular.hdf5",
+                "hdf5/glove-100-angular.hdf5",
+                "hdf5/glove-200-angular.hdf5",
+                "hdf5/sift-128-euclidean.hdf5",
+                "hdf5/fashion-mnist-784-euclidean.hdf5");
+        // large files not yet supported
+//                "hdf5/deep-image-96-angular.hdf5",
+//                "hdf5/gist-960-euclidean.hdf5");
+        for (var f : files) {
+            var ds = load(f);
+            for (int M : List.of(8, 12, 16, 24, 32, 40)) {
+                for (int beamWidth : List.of(80, 100, 120, 160, 200, 400, 600, 800)) {
+                    testRecall(M, beamWidth, ds);
+                }
             }
         }
-
     }
 }
