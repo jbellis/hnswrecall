@@ -44,7 +44,7 @@ public class Bench {
         var pqr = performQueries(ds.queryVectors, ds.groundTruth, ravv, hnsw::getView, topK, queryRuns);
         long queryNanos = System.nanoTime() - start;
         var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-        System.out.format("HNSW M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
+        System.out.format("HNSW   M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 M, beamWidth, topK, recall, buildNanos / 1_000_000_000.0, queryNanos / 1_000_000_000.0, pqr.nodesVisited);
 
         // query vamana
@@ -58,8 +58,8 @@ public class Bench {
         vqr = vamanaQueries(vamana, ds.queryVectors, ds.groundTruth, ravv, topK, queryRuns);
         var vQueryNanos = System.nanoTime() - vStart;
         var vRecall = ((double) vqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-        System.out.format("Vamana M=%d ef=%d alpha=%.2f: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                M, beamWidth, alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
+        System.out.format("Vamana M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
+                M, beamWidth, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
 
         es.shutdown();
     }
