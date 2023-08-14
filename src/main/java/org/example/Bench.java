@@ -36,7 +36,6 @@ public class Bench {
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         var vBuilder = new VamanaGraphBuilder<>(hnsw, ravv, VectorEncoding.FLOAT32, similarityFunction, 2 * beamWidth);
         long buildNanos = System.nanoTime() - start;
-        es.shutdown();
 
         // query hnsw baseline
         int queryRuns = 10;
@@ -61,6 +60,8 @@ public class Bench {
         var vRecall = ((double) vqr.topKFound) / (queryRuns * queryVectors.size() * topK);
         System.out.format("Vamana M=%d ef=%d alpha=%.2f: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 M, beamWidth, alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
+
+        es.shutdown();
     }
 
     private static float normOf(float[] baseVector) {
