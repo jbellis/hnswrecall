@@ -22,21 +22,25 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Texmex {
-    public static void testRecall(List<float[]> baseVectors, List<float[]> queryVectors, List<Set<Integer>> groundTruth) throws IOException, ExecutionException, InterruptedException {
+    public static void testRecall(List<float[]> baseVectors, List<float[]> queryVectors, List<Set<Integer>> groundTruth)
+            throws IOException, ExecutionException, InterruptedException
+    {
         var ravv = new ListRandomAccessVectorValues(baseVectors, baseVectors.get(0).length);
         var topK = groundTruth.get(0).size();
         int M = 16;
         int beamWidth = 100;
 
+        // build the graphs on multiple threads
         var start = System.nanoTime();
         var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, M, beamWidth);
         int buildThreads = 24;
-        var es = Executors.newFixedThreadPool(
-                buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
+        var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         var vBuilder = new VamanaGraphBuilder<>(hnsw, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, 2 * beamWidth);
         long buildNanos = System.nanoTime() - start;
+        es.shutdown();
 
+        // query hnsw baseline
         int queryRuns = 10;
         start = System.nanoTime();
         var pqr = performQueries(queryVectors, groundTruth, ravv, hnsw::getView, topK, queryRuns);
@@ -45,25 +49,20 @@ public class Texmex {
         System.out.format("HNSW: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 topK, recall, buildNanos / 1_000_000_000.0, queryNanos / 1_000_000_000.0, pqr.nodesVisited);
 
+        // query vamana
         var vStart = System.nanoTime();
         ResultSummary vqr;
         long vBuildNanos;
         float alpha = 1.5f;
-        try {
-            // x2 b/c OnHeapHnswGraph doubles connections on L0
-            var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, alpha)).get();
-            vBuildNanos = System.nanoTime() - vStart;
-            vStart = System.nanoTime();
-            vqr = vamanaQueries(vamana, queryVectors, groundTruth, ravv, topK, queryRuns);
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        // x2 b/c OnHeapHnswGraph doubles connections on L0
+        var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, alpha)).get();
+        vBuildNanos = System.nanoTime() - vStart;
+        vStart = System.nanoTime();
+        vqr = vamanaQueries(vamana, queryVectors, groundTruth, ravv, topK, queryRuns);
         var vQueryNanos = System.nanoTime() - vStart;
         var vRecall = ((double) vqr.topKFound) / (queryRuns * queryVectors.size() * topK);
         System.out.format("Vamana@%s: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                 alpha, topK, vRecall, vBuildNanos / 1_000_000_000.0, vQueryNanos / 1_000_000_000.0, vqr.nodesVisited);
-
-        es.shutdown();
     }
 
     private static float normOf(float[] baseVector) {
@@ -184,7 +183,7 @@ public class Texmex {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
         // angular
