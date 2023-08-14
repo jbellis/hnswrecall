@@ -34,7 +34,8 @@ public class Bench {
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
-        var vBuilder = new VamanaGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, 1.4f);
+        float alpha = 1.4f;
+        var vBuilder = new VamanaGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, alpha);
         long buildNanos = System.nanoTime() - start;
 
         // query hnsw baseline
@@ -50,7 +51,6 @@ public class Bench {
         var vStart = System.nanoTime();
         ResultSummary vqr;
         long vBuildNanos;
-        float alpha = 1.5f;
         // x2 b/c OnHeapHnswGraph doubles connections on L0
         var vamana = vBuilder.buildAsync(ravv, es, buildThreads).get();
         vBuildNanos = System.nanoTime() - vStart;
