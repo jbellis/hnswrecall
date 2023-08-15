@@ -35,7 +35,8 @@ public class Bench {
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
-        var vBuilder = new VamanaGraphBuilder<>(hnsw, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, 2 * beamWidth);
+        float alpha = 1.4f;
+        var vBuilder = new VamanaGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, alpha);
         long buildNanos = System.nanoTime() - start;
 
         int queryRuns = 10;
@@ -50,8 +51,7 @@ public class Bench {
         var vStart = System.nanoTime();
         ResultSummary vqr;
         long vBuildNanos;
-        // x2 b/c OnHeapHnswGraph doubles connections on L0
-        var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, 1.4f)).get();
+        var vamana = vBuilder.buildAsync(ravv, es, buildThreads).get();
         vBuildNanos = System.nanoTime() - vStart;
         vStart = System.nanoTime();
         vqr = vamanaQueries(vamana, ds.queryVectors, ds.groundTruth, ravv, topK, queryRuns);
@@ -66,14 +66,6 @@ public class Bench {
         System.out.format("V-HNSW M=%d ef=%d: top %d recall %.4f, query %.2fs. %s nodes visited%n",
                 M, beamWidth, topK, vhRecall, (System.nanoTime() - start) / 1_000_000_000.0, vpqr.nodesVisited);
 
-        // query the first level of hnsw like it's vamana
-        start = System.nanoTime();
-        var badVamana = vBuilder.buildBadVamana();
-        var bvqr = performQueries(ds.queryVectors, ds.groundTruth, ravv, badVamana::getView, topK, queryRuns);
-        var bvRecall = ((double) bvqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-        System.out.format("BadVmna M=%d ef=%d: top %d recall %.4f, query %.2fs. %s nodes visited%n",
-                M, beamWidth, topK, bvRecall, (System.nanoTime() - start) / 1_000_000_000.0, bvqr.nodesVisited);
-
         es.shutdown();
     }
 
@@ -87,7 +79,7 @@ public class Bench {
 
     private record ResultSummary(int topKFound, int nodesVisited) { }
 
-    private static ResultSummary vamanaQueries(ConcurrentVamanaGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
+    private static ResultSummary vamanaQueries(ConcurrentOnHeapHnswGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
         var greedySearcher = ThreadLocal.withInitial(() -> new VamanaSearcher<>(vamana, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT));
