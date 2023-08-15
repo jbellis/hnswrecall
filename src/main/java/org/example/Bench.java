@@ -16,6 +16,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
@@ -34,8 +35,7 @@ public class Bench {
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
-        float alpha = 1.4f;
-        var vBuilder = new VamanaGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, alpha);
+        var vBuilder = new VamanaGraphBuilder<>(hnsw, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, 2 * beamWidth);
         long buildNanos = System.nanoTime() - start;
 
         // query hnsw baseline
@@ -52,7 +52,7 @@ public class Bench {
         ResultSummary vqr;
         long vBuildNanos;
         // x2 b/c OnHeapHnswGraph doubles connections on L0
-        var vamana = vBuilder.buildAsync(ravv, es, buildThreads).get();
+        var vamana = es.submit(() -> vBuilder.buildVamana(2 * M, 1.4f)).get();
         vBuildNanos = System.nanoTime() - vStart;
         vStart = System.nanoTime();
         vqr = vamanaQueries(vamana, ds.queryVectors, ds.groundTruth, ravv, topK, queryRuns);
@@ -74,7 +74,7 @@ public class Bench {
 
     private record ResultSummary(int topKFound, int nodesVisited) { }
 
-    private static ResultSummary vamanaQueries(ConcurrentOnHeapHnswGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
+    private static ResultSummary vamanaQueries(ConcurrentVamanaGraph vamana, List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, int topK, int queryRuns) {
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
         var greedySearcher = ThreadLocal.withInitial(() -> new VamanaSearcher<>(vamana, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT));
@@ -83,18 +83,35 @@ public class Bench {
                 var queryVector = queryVectors.get(i);
                 VamanaSearcher.QueryResult qr;
                 try {
-                    qr = greedySearcher.get().search(queryVector, topK);
+                    qr = greedySearcher.get().search(queryVector, 2 * topK);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
                 var gt = groundTruth.get(i);
-                int[] resultNodes = qr.results.node();
-                var n = IntStream.range(0, Math.min(resultNodes.length, topK)).filter(j -> gt.contains(resultNodes[j])).count();
+                var n = topKCorrect(topK, qr.results.node(), gt);
                 topKfound.add(n);
                 nodesVisited.add(qr.visitedCount);
             });
         }
         return new ResultSummary((int) topKfound.sum(), (int) nodesVisited.sum());
+    }
+
+    private static long topKCorrect(int topK, int[] resultNodes, Set<Integer> gt) {
+        int count = Math.min(resultNodes.length, topK);
+        // stream the first count results into a Set
+        var resultSet = Arrays.stream(resultNodes, 0, count)
+                .boxed()
+                .collect(Collectors.toSet());
+        assert resultSet.size() == count : String.format("%s duplicate results out of %s", count - resultSet.size(), count);
+        return resultSet.stream().filter(gt::contains).count();
+    }
+
+    private static long topKCorrect(int topK, NeighborQueue nn, Set<Integer> gt) {
+        var a = new int[nn.size()];
+        for (int j = a.length - 1; j >= 0; j--) {
+            a[j] = nn.pop();
+        }
+        return topKCorrect(topK, a, gt);
     }
 
     private static ResultSummary performQueries(List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, Supplier<HnswGraph> graphSupplier, int topK, int queryRuns) {
@@ -110,11 +127,7 @@ public class Bench {
                     throw new UncheckedIOException(e);
                 }
                 var gt = groundTruth.get(i);
-                var a = new int[nn.size()];
-                for (int j = a.length - 1; j >= 0; j--) {
-                    a[j] = nn.pop();
-                }
-                var n = IntStream.range(0, Math.min(a.length, topK)).filter(j -> gt.contains(a[j])).count();
+                var n = topKCorrect(topK, nn, gt);
                 topKfound.add(n);
                 nodesVisited.add(nn.visitedCount());
             });
