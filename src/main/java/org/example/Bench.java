@@ -27,7 +27,7 @@ public class Bench {
             throws IOException, ExecutionException, InterruptedException
     {
         var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
-        var topK = 2; // ds.groundTruth.get(0).size();
+        var topK = ds.groundTruth.get(0).size();
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
