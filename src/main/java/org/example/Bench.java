@@ -23,15 +23,15 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
-    private static void testRecall(int M, int beamWidth, DataSet ds)
-            throws IOException, ExecutionException, InterruptedException
+    private static void testRecall(int M, int beamWidth, int overquery, DataSet ds)
+            throws ExecutionException, InterruptedException
     {
         var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
         var topK = ds.groundTruth.get(0).size();
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = ConcurrentHnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth);
+        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, 1.5f);
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
@@ -40,10 +40,10 @@ public class Bench {
         int queryRuns = 10;
         // query hnsw baseline
         start = System.nanoTime();
-        var pqr = performQueries(ds.queryVectors, ds.groundTruth, ravv, hnsw::getView, topK, queryRuns);
+        var pqr = performQueries(ds.queryVectors, ds.groundTruth, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
         var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-        System.out.format("HNSW   M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                M, beamWidth, topK, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
+        System.out.format("HNSW   M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
+                M, beamWidth, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
 
         es.shutdown();
     }
@@ -76,7 +76,8 @@ public class Bench {
         return topKCorrect(topK, a, gt);
     }
 
-    private static ResultSummary performQueries(List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, Supplier<HnswGraph> graphSupplier, int topK, int queryRuns) {
+    private static ResultSummary performQueries(List<float[]> queryVectors, List<Set<Integer>> groundTruth, ListRandomAccessVectorValues ravv, Supplier<HnswGraph> graphSupplier, int topK, int efSearch, int queryRuns) {
+        assert efSearch >= topK;
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
         for (int k = 0; k < queryRuns; k++) {
@@ -84,7 +85,7 @@ public class Bench {
                 var queryVector = queryVectors.get(i);
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(queryVector, topK, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    nn = HnswGraphSearcher.search(queryVector, efSearch, ravv, VectorEncoding.FLOAT32, VectorSimilarityFunction.DOT_PRODUCT, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -189,18 +190,21 @@ public class Bench {
                 "hdf5/nytimes-256-angular.hdf5",
                 "hdf5/glove-100-angular.hdf5",
                 "hdf5/glove-200-angular.hdf5",
-                "hdf5/sift-128-euclidean.hdf5",
-                "hdf5/fashion-mnist-784-euclidean.hdf5");
-        var mGrid = List.of(8, 12, 16, 24, 32, 40);
-        var efGrid = List.of(60, 80, 100, 120, 160, 200, 400);
+                "hdf5/sift-128-euclidean.hdf5");
+//                "hdf5/fashion-mnist-784-euclidean.hdf5");  buggy?
+        var mGrid = List.of(8, 12, 16, 24, 32, 48, 64);
+        var efConstructionGrid = List.of(60, 80, 100, 120, 160, 200, 400, 600, 800);
+        var efSearchFactor = List.of(1, 2, 4, 8);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
         for (var f : files) {
             var ds = load(f);
             for (int M : mGrid) {
-                for (int beamWidth : efGrid) {
-                    testRecall(M, beamWidth, ds);
+                for (int beamWidth : efConstructionGrid) {
+                    for (int overquery : efSearchFactor) {
+                        testRecall(M, beamWidth, overquery, ds);
+                    }
                 }
             }
         }
