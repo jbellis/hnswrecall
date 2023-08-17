@@ -23,7 +23,7 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
-    private static void testRecall(int M, int beamWidth, int overquery, DataSet ds)
+    private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds)
             throws ExecutionException, InterruptedException
     {
         var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
@@ -31,21 +31,21 @@ public class Bench {
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, beamWidth, 1.5f);
+        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
+        es.shutdown();
         long buildNanos = System.nanoTime() - start;
 
         int queryRuns = 10;
-        // query hnsw baseline
-        start = System.nanoTime();
-        var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
-        var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-        System.out.format("HNSW   M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                M, beamWidth, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
-
-        es.shutdown();
+        for (int overquery : efSearchOptions) {
+            start = System.nanoTime();
+            var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
+            var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
+            System.out.format("HNSW   M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
+                    M, efConstruction, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
+        }
     }
 
     private static float normOf(float[] baseVector) {
@@ -214,9 +214,7 @@ public class Bench {
         var ds = load(f);
         for (int M : mGrid) {
             for (int beamWidth : efConstructionGrid) {
-                for (int overquery : efSearchFactor) {
-                    testRecall(M, beamWidth, overquery, ds);
-                }
+                testRecall(M, beamWidth, efSearchFactor, ds);
             }
         }
     }
