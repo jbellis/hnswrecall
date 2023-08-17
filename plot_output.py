@@ -9,7 +9,7 @@ def parse_data(description, data):
     query_vector_count = int(re.search(r'(\d+) query', description).group(1))
     dimensions = int(re.search(r'dimensions (\d+)', description).group(1))
     dataset_name = re.search(r'hdf5/(\S+).hdf5', description).group(1)
-    
+
     parsed_data = []
     for line in data:
         # Extract recall, query time, M and ef values
@@ -17,11 +17,12 @@ def parse_data(description, data):
         query_time = float(re.search(r'query (\d+\.\d+)s', line).group(1))
         M = int(re.search(r'M=(\d+)', line).group(1))
         ef = int(re.search(r'ef=(\d+)', line).group(1))
+        overquery = int(re.search(r'top 100/(\d+) ', line).group(1))
         
         # Calculate throughput
         throughput = query_vector_count * 10 / query_time
         
-        parsed_data.append((recall, throughput, M, ef))
+        parsed_data.append((recall, throughput, M, ef, overquery))
     
     return {
         'name': dataset_name,
@@ -52,10 +53,10 @@ def plot_dataset(dataset, output_dir="."):
     data = dataset['data']
     
     # Create plot
-    plt.figure(figsize=(15, 10))
-    for recall, throughput, M, ef in data:
-        plt.scatter(recall, throughput, label=f'M={M}, ef={ef}')
-        plt.annotate(f'M={M}, ef={ef}', (recall, throughput))
+    plt.figure(figsize=(15, 20))
+    for recall, throughput, M, ef, overquery in data:
+        plt.scatter(recall, throughput, label=f'M={M}, ef={ef}, oq={overquery}')
+        plt.annotate(f'M={M}, ef={ef}, oq={overquery}', (recall, throughput))
     
     # Set title and labels
     plt.title(f"Dataset: {name}\\nBase Vector Count: {base_vector_count}\\nDimensions: {dimensions}")
