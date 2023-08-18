@@ -23,7 +23,7 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
-    private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds)
+    private static void testRecall(int buildThreads, int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds)
             throws ExecutionException, InterruptedException
     {
         var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
@@ -32,7 +32,6 @@ public class Bench {
         // build the graphs on multiple threads
         var start = System.nanoTime();
         var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
-        int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         es.shutdown();
@@ -186,25 +185,13 @@ public class Bench {
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
-        var files = List.of(
-                "hdf5/nytimes-256-angular.hdf5",
-                "hdf5/glove-100-angular.hdf5",
-                "hdf5/glove-200-angular.hdf5",
-                "hdf5/sift-128-euclidean.hdf5");
-        var mGrid = List.of(8, 12, 16, 24, 32, 48, 64);
-        var efConstructionGrid = List.of(60, 80, 100, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 2, 4, 8);
+        var files = List.of("hdf5/sift-128-euclidean.hdf5");
+        var mGrid = List.of(16);
+        var efConstructionGrid = List.of(100);
+        var efSearchFactor = List.of(1);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
-        for (var f : files) {
-            gridSearch(f, mGrid, efConstructionGrid, efSearchFactor);
-        }
-
-        // tiny dataset, don't waste time building a huge index
-        files = List.of("hdf5/fashion-mnist-784-euclidean.hdf5");
-        mGrid = List.of(8, 12, 16, 24);
-        efConstructionGrid = List.of(40, 60, 80, 100, 120, 160);
         for (var f : files) {
             gridSearch(f, mGrid, efConstructionGrid, efSearchFactor);
         }
@@ -214,7 +201,9 @@ public class Bench {
         var ds = load(f);
         for (int M : mGrid) {
             for (int beamWidth : efConstructionGrid) {
-                testRecall(M, beamWidth, efSearchFactor, ds);
+                for (int threads = 1; threads < 256; threads *= 2) {
+                    testRecall(threads, M, beamWidth, efSearchFactor, ds);
+                }
             }
         }
     }
