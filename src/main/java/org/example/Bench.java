@@ -42,8 +42,8 @@ public class Bench {
             start = System.nanoTime();
             var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
             var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-            System.out.format("HNSW   M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                    M, efConstruction, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
+            System.out.format("HNSW   Threads=%d M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
+                    buildThreads, M, efConstruction, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
         }
     }
 
