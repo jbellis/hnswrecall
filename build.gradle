@@ -27,11 +27,11 @@ task runSimple(type: JavaExec) {
     mainClass = 'org.example.SimpleExample'
 }
 
-task runTexmex(type: JavaExec) {
+task runBench(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
-    mainClass = 'org.example.Texmex'
-    if (project.hasProperty('siftName')) {
-        args siftName
+    mainClass = 'org.example.Bench'
+    if (project.hasProperty('datasetName')) {
+        args datasetName
     }
     jvmArgs '--add-modules=jdk.incubator.vector', '-Xmx32G', "-ea"
     // jvmArgs '-XX:+FlightRecorder', '-XX:StartFlightRecording:filename=flight.jfr'
