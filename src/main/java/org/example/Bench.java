@@ -222,10 +222,11 @@ public class Bench {
     private static void gridSearch(String f, List<Integer> mGrid, List<Integer> efConstructionGrid, List<Integer> efSearchFactor) throws ExecutionException, InterruptedException {
         var ds = load(f);
         var start = System.nanoTime();
-        PQuantization pq = new PQuantization(ds.baseVectors);
+        var pqDims = 8;
+        PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
         System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
         start = System.nanoTime();
-        var quantizedVectors = new ListRandomAccessVectorValues<>(pq.quantizeAll(ds.baseVectors), 4);
+        var quantizedVectors = new ListRandomAccessVectorValues<>(pq.quantizeAll(ds.baseVectors), pqDims);
         System.out.format("PQ encode %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
         for (int M : mGrid) {

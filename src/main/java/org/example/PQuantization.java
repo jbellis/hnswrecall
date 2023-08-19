@@ -14,19 +14,20 @@ import java.util.stream.IntStream;
 
 public class PQuantization {
     private final List<List<CentroidCluster<DoublePoint>>> codebooks;
-    // number of subspaces
-    private final int M = 4;
+    private final int M;
 
     /**
      * Constructor for PQQuantization. Initializes the codebooks by clustering
      * the input data using Product Quantization.
+     *
+     * M = number of subspaces
+     * K = number of clusters per subspace
      */
-    public PQuantization(List<float[]> vectors) {
+    public PQuantization(List<float[]> vectors, int M, int K) {
+        this.M = M;
         int dimensions = vectors.get(0).length;
         assert dimensions % M == 0 : "The number of dimensions must be divisible by " + M;
-        // Number of centroids per subspace
-        int k = 256;
-        codebooks = createCodebooks(vectors, M, k);
+        codebooks = createCodebooks(vectors, M, K);
     }
 
     static List<List<CentroidCluster<DoublePoint>>> createCodebooks(List<float[]> vectors, int M, int K) {
@@ -56,27 +57,29 @@ public class PQuantization {
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    double[] subvector = getSubVector(vector, m, subvectorSize);
-                    List<CentroidCluster<DoublePoint>> codebook = codebooks.get(m);
-                    return IntStream.range(0, codebook.size())
-                            .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, distanceBetween(subvector, codebook.get(i).getCenter().getPoint())))
-                            .min(Map.Entry.comparingByValue())
-                            .map(Map.Entry::getKey)
-                            .get();
+                    return closetCentroidIndex(getSubVector(vector, m, subvectorSize), codebooks.get(m));
                 })
                 .toList();
 
+        byte[] q = toBytes(indices, M);
+        return q;
+    }
+
+    static Integer closetCentroidIndex(double[] subvector, List<CentroidCluster<DoublePoint>> codebook) {
+        return IntStream.range(0, codebook.size())
+                .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, distanceBetween(subvector, codebook.get(i).getCenter().getPoint())))
+                .min(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .get();
+    }
+
+    static byte[] toBytes(List<Integer> indices, int M) {
         // convert indexes to bytes, in a manner such that naive euclidean distance will still capture
         // the correct distance between indexes
         byte[] q = new byte[M];
         for (int m = 0; m < M; m++) {
             int centroidIndex = indices.get(m);
-            byte byteValue;
-            if (centroidIndex < 128) {
-                byteValue = (byte) (centroidIndex - 128);
-            } else {
-                byteValue = (byte) (centroidIndex - 128);
-            }
+            byte byteValue = (byte) (centroidIndex - 128);
             q[m] = byteValue;
         }
         return q;
@@ -97,12 +100,14 @@ public class PQuantization {
 
     static double distanceBetween(double[] vector1, double[] vector2) {
         var sum = 0.0;
-        for (var i = 0; i < vector1.length; i += DoubleVector.SPECIES_PREFERRED.length()) {
-            var a = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector1, i);
-            var b = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector2, i);
-            var diff = a.sub(b);
-            var square = diff.mul(diff);
-            sum += square.reduceLanes(VectorOperators.ADD);
+        if (vector1.length >= DoubleVector.SPECIES_PREFERRED.length()) {
+            for (var i = 0; i < vector1.length; i += DoubleVector.SPECIES_PREFERRED.length()) {
+                var a = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector1, i);
+                var b = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector2, i);
+                var diff = a.sub(b);
+                var square = diff.mul(diff);
+                sum += square.reduceLanes(VectorOperators.ADD);
+            }
         }
         // tail
         for (var i = vector1.length - vector1.length % DoubleVector.SPECIES_PREFERRED.length(); i < vector1.length; i++) {
