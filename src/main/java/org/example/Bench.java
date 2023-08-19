@@ -7,6 +7,7 @@ import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.VectorUtil;
 import org.apache.lucene.util.hnsw.*;
 import org.example.util.ListRandomAccessVectorValues;
+import org.example.util.PQRandomAccessVectorValues;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -23,7 +24,7 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
-    private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds, PQuantization pq, ListRandomAccessVectorValues<byte[]> quantizedVectors)
+    private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds, PQRandomAccessVectorValues pqvv)
             throws ExecutionException, InterruptedException
     {
         var floatVectors = new ListRandomAccessVectorValues<>(ds.baseVectors, ds.baseVectors.get(0).length);
@@ -42,7 +43,7 @@ public class Bench {
         int queryRuns = 10;
         for (int overquery : efSearchOptions) {
             start = System.nanoTime();
-            var pqr = performQueries(ds, pq, quantizedVectors, hnsw::getView, topK, topK * overquery, queryRuns);
+            var pqr = performQueries(ds, pqvv, hnsw::getView, topK, topK * overquery, queryRuns);
             var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
             System.out.format("HNSW top %d/%d recall %.4f, query %.2fs. %s nodes visited%n",
                     topK, overquery, recall, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
@@ -78,8 +79,7 @@ public class Bench {
     }
 
     private static ResultSummary performQueries(DataSet ds,
-                                                PQuantization pq,
-                                                ListRandomAccessVectorValues<byte[]> ravv,
+                                                PQRandomAccessVectorValues pqvv,
                                                 Supplier<HnswGraph> graphSupplier,
                                                 int topK,
                                                 int efSearch,
@@ -91,34 +91,40 @@ public class Bench {
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
-                // quantizing takes about 40% of performQueries runtime!
-                var quantizedQuery = pq.encode(queryVector);
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(quantizedQuery, efSearch, ravv, VectorEncoding.BYTE, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    nn = HnswGraphSearcher.search(queryVector, efSearch, pqvv, VectorEncoding.FLOAT32, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
 
-                // re-rank the quantized results by the original similarity function
-                // Decorate
-                int[] raw = new int[nn.size()];
-                for (int j = raw.length - 1; j >= 0; j--) {
-                    raw[j] = nn.pop();
+                int[] results;
+                if (efSearch > topK) {
+                    // re-rank the quantized results by the original similarity function
+                    // Decorate
+                    int[] raw = new int[nn.size()];
+                    for (int j = raw.length - 1; j >= 0; j--) {
+                        raw[j] = nn.pop();
+                    }
+                    // Pair each item in `raw` with its computed similarity
+                    Map.Entry<Integer, Double>[] decorated = new AbstractMap.SimpleEntry[raw.length];
+                    for (int j = 0; j < raw.length; j++) {
+                        double similarity = ds.similarityFunction.compare(queryVector, ds.baseVectors.get(raw[j]));
+                        decorated[j] = new AbstractMap.SimpleEntry<>(raw[j], similarity);
+                    }
+                    // Sort based on the computed similarity
+                    Arrays.sort(decorated, (p1, p2) -> Double.compare(p2.getValue(), p1.getValue())); // Note the order for reversed sort
+                    // Undecorate
+                    results = Arrays.stream(decorated).mapToInt(Map.Entry::getKey).toArray();
+                } else {
+                    results = new int[nn.size()];
+                    for (int j = results.length - 1; j >= 0; j--) {
+                        results[j] = nn.pop();
+                    }
                 }
-                // Pair each item in `raw` with its computed similarity
-                Map.Entry<Integer, Double>[] decorated = new AbstractMap.SimpleEntry[raw.length];
-                for (int j = 0; j < raw.length; j++) {
-                    double similarity = ds.similarityFunction.compare(queryVector, ds.baseVectors.get(raw[j]));
-                    decorated[j] = new AbstractMap.SimpleEntry<>(raw[j], similarity);
-                }
-                // Sort based on the computed similarity
-                Arrays.sort(decorated, (p1, p2) -> Double.compare(p2.getValue(), p1.getValue())); // Note the order for reversed sort
-                // Undecorate
-                int[] a = Arrays.stream(decorated).mapToInt(Map.Entry::getKey).toArray();
 
                 var gt = ds.groundTruth.get(i);
-                var n = topKCorrect(topK, a, gt);
+                var n = topKCorrect(topK, results, gt);
                 topKfound.add(n);
                 nodesVisited.add(nn.visitedCount());
             });
@@ -221,7 +227,7 @@ public class Bench {
                 "hdf5/sift-128-euclidean.hdf5");
         var mGrid = List.of(16); // 8, 12, 16, 24, 32, 48, 64);
         var efConstructionGrid = List.of(100); // 60, 80, 100, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 4, 8);
+        var efSearchFactor = List.of(1, 2, 4, 8);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
@@ -242,17 +248,17 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = 64;
+        var pqDims = 32;
         PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
         System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
         start = System.nanoTime();
-        var quantizedVectors = new ListRandomAccessVectorValues<>(pq.encodeAll(ds.baseVectors), pqDims);
+        var quantizedVectors = pq.encodeAll(ds.baseVectors);
         System.out.format("PQ encode %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
         for (int M : mGrid) {
             for (int beamWidth : efConstructionGrid) {
-                testRecall(M, beamWidth, efSearchFactor, ds, pq, quantizedVectors);
+                testRecall(M, beamWidth, efSearchFactor, ds, new PQRandomAccessVectorValues(quantizedVectors, pq));
             }
         }
     }

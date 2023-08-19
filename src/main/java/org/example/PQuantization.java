@@ -58,14 +58,47 @@ public class PQuantization {
         return toBytes(indices, M);
     }
 
+    /**
+     * Decodes the quantized representation (byte array) to its approximate original vector.
+     *
+     * @return The approximate original vector.
+     */
+    public float[] decode(byte[] encoded) {
+        int subvectorSize = centroid.length / M; // The size of each subvector should be based on the original vector dimension.
+        float[] reconstructed = new float[centroid.length]; // The reconstructed vector should have the same length as the original vector.
+
+        for (int m = 0; m < M; m++) {
+            byte byteValue = encoded[m];
+            int centroidIndex = byteValue + 128; // reverse the operation done in toBytes()
+            double[] centroidSubvector = codebooks.get(m).get(centroidIndex).getCenter().getPoint();
+
+            for (int i = 0; i < subvectorSize; i++) {
+                reconstructed[m * subvectorSize + i] = (float) centroidSubvector[i];
+            }
+        }
+
+        // Add back the global centroid to get the approximate original vector.
+        for (int i = 0; i < reconstructed.length; i++) {
+            reconstructed[i] += (float) centroid[i];
+        }
+
+        return reconstructed;
+    }
+
+    public int getDimensions() {
+        return centroid.length;
+    }
+
     static void printCodebooks(List<List<CentroidCluster<DoublePoint>>> result) {
         List<List<String>> strings = result.stream().map(L -> L.stream().map(C -> arraySummary(C.getCenter().getPoint())).toList()).toList();
         System.out.printf("Codebooks: [%s]%n", String.join("\n ", strings.stream().map(L -> "[" + String.join(", ", L) + "]").toList()));
     }
 
     private static String arraySummary(double[] a) {
-        String[] b = Arrays.stream(a, 0, 4).mapToObj(String::valueOf).toArray(String[]::new);
-        b[3] = "... (%s)".formatted(a.length);
+        String[] b = Arrays.stream(a, 0, Math.min(4, a.length)).mapToObj(String::valueOf).toArray(String[]::new);
+        if (a.length > 4) {
+            b[3] = "... (%s)".formatted(a.length);
+        }
         return "[" + String.join(", ", b) + "]";
     }
 
