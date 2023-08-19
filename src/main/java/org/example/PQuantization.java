@@ -110,19 +110,7 @@ public class PQuantization {
                             .map(vector -> new DoublePoint(getSubVector(vector, m, subvectorSizes)))
                             .collect(Collectors.toList());
                     KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(K, 15, PQuantization::distanceBetween);
-                    List<CentroidCluster<DoublePoint>> L = clusterer.cluster(subvectors);
-                    // sort the clusters lexicographically by their centroid double[] values
-                    L.sort((c1, c2) -> {
-                        double[] p1 = c1.getCenter().getPoint();
-                        double[] p2 = c2.getCenter().getPoint();
-                        for (int i = 0; i < p1.length; i++) {
-                            if (p1[i] != p2[i]) {
-                                return Double.compare(p1[i], p2[i]);
-                            }
-                        }
-                        return 0;
-                    });
-                    return L;
+                    return clusterer.cluster(subvectors);
                 })
                 .toList();
     }
