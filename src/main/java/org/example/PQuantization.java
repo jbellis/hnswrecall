@@ -28,6 +28,7 @@ public class PQuantization {
         centroid = PQUtil.centroidOf(vectors);
         // subtract the centroid from each vector
         var centeredVectors = vectors.stream().parallel().map(v -> subFrom(v, centroid)).toList();
+        // TODO compute optimal rotation as well
         codebooks = createCodebooks(centeredVectors, M, K);
     }
 
