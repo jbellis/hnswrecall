@@ -7,6 +7,7 @@ import org.apache.commons.math3.ml.clustering.DoublePoint;
 import org.apache.commons.math3.ml.clustering.KMeansPlusPlusClusterer;
 
 import java.util.AbstractMap;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -28,6 +29,18 @@ public class PQuantization {
         int dimensions = vectors.get(0).length;
         assert dimensions % M == 0 : "The number of dimensions must be divisible by " + M;
         codebooks = createCodebooks(vectors, M, K);
+        printCodebooks(codebooks);
+    }
+
+    static void printCodebooks(List<List<CentroidCluster<DoublePoint>>> result) {
+        List<List<String>> strings = result.stream().map(L -> L.stream().map(C -> arraySummary(C.getCenter().getPoint())).toList()).toList();
+        System.out.printf("Codebooks: [%s]%n", String.join("\n ", strings.stream().map(L -> "[" + String.join(", ", L) + "]").toList()));
+    }
+
+    private static String arraySummary(double[] a) {
+        String[] b = Arrays.stream(a, 0, 4).mapToObj(String::valueOf).toArray(String[]::new);
+        b[3] = "... (%s)".formatted(a.length);
+        return "[" + String.join(", ", b) + "]";
     }
 
     static List<List<CentroidCluster<DoublePoint>>> createCodebooks(List<float[]> vectors, int M, int K) {
@@ -37,14 +50,40 @@ public class PQuantization {
                     List<DoublePoint> subvectors = vectors.stream().parallel()
                             .map(vector -> new DoublePoint(getSubVector(vector, m, subvectorSize)))
                             .collect(Collectors.toList());
-                    KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(K, 100, PQuantization::distanceBetween);
-                    return clusterer.cluster(subvectors);
+                    KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(K, -1, PQuantization::distanceBetween);
+                    List<CentroidCluster<DoublePoint>> L = clusterer.cluster(subvectors);
+                    // sort the clusters lexicographically by their centroid double[] values
+                    L.sort((c1, c2) -> {
+                        double[] p1 = c1.getCenter().getPoint();
+                        double[] p2 = c2.getCenter().getPoint();
+                        for (int i = 0; i < p1.length; i++) {
+                            if (p1[i] != p2[i]) {
+                                return Double.compare(p1[i], p2[i]);
+                            }
+                        }
+                        return 0;
+                    });
+                    return L;
                 })
                 .toList();
     }
 
     public List<byte[]> quantizeAll(List<float[]> vectors) {
         return vectors.stream().parallel().map(this::quantize).toList();
+    }
+
+    public List<int[]> quantizeInts(List<float[]> vectors) {
+        return vectors.stream().parallel().map(this::quantizeInt).toList();
+    }
+
+    public int[] quantizeInt(float[] vector) {
+        int subvectorSize = vector.length / M;
+        return IntStream.range(0, M)
+                .map(m -> {
+                    // find the closest centroid in the corresponding codebook to each subvector
+                    return closetCentroidIndex(getSubVector(vector, m, subvectorSize), codebooks.get(m));
+                })
+                .toArray();
     }
 
     /**
@@ -61,11 +100,10 @@ public class PQuantization {
                 })
                 .toList();
 
-        byte[] q = toBytes(indices, M);
-        return q;
+        return toBytes(indices, M);
     }
 
-    static Integer closetCentroidIndex(double[] subvector, List<CentroidCluster<DoublePoint>> codebook) {
+    static int closetCentroidIndex(double[] subvector, List<CentroidCluster<DoublePoint>> codebook) {
         return IntStream.range(0, codebook.size())
                 .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, distanceBetween(subvector, codebook.get(i).getCenter().getPoint())))
                 .min(Map.Entry.comparingByValue())
