@@ -91,6 +91,7 @@ public class Bench {
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
+                // quantizing takes about 40% of performQueries runtime!
                 var quantizedQuery = pq.quantize(queryVector);
                 NeighborQueue nn;
                 try {
