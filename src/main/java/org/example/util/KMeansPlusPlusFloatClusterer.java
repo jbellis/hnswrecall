@@ -118,14 +118,14 @@ public class KMeansPlusPlusFloatClusterer {
             int selectedIdx = -1;
             for (int j = 0; j < distances.length; j++) {
                 r -= distances[j];
-                if (r <= 0) {
+                if (r < 1e-6) {
                     selectedIdx = j;
                     break;
                 }
             }
 
             if (selectedIdx == -1) {
-                throw new IllegalStateException("Failed to select a centroid using the weighted distribution.");
+                selectedIdx = random.nextInt(points.size());
             }
 
             float[] nextCentroid = points.get(selectedIdx);
