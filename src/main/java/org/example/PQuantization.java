@@ -17,6 +17,7 @@ public class PQuantization {
     private final List<List<CentroidCluster<DoublePoint>>> codebooks;
     private final int M;
     private final double[] centroid;
+    private final int[] subvectorSizes; // added member variable
 
     /**
      * Constructor for PQQuantization. Initializes the codebooks by clustering
@@ -27,13 +28,12 @@ public class PQuantization {
      */
     public PQuantization(List<float[]> vectors, int M, int K) {
         this.M = M;
-        int dimensions = vectors.get(0).length;
-        assert dimensions % M == 0 : "The number of dimensions must be divisible by " + M;
         centroid = centroidOf(vectors);
+        subvectorSizes = getSubvectorSizes(vectors.get(0).length, M);
         // subtract the centroid from each vector
         var centeredVectors = vectors.stream().parallel().map(v -> subFrom(v, centroid)).toList();
         // TODO compute optimal rotation as well
-        codebooks = createCodebooks(centeredVectors, M, K);
+        codebooks = createCodebooks(centeredVectors, M, K, subvectorSizes);
     }
 
     public List<byte[]> encodeAll(List<float[]> vectors) {
@@ -47,11 +47,11 @@ public class PQuantization {
      */
     public byte[] encode(float[] vector) {
         float[] centered = subFrom(vector, centroid);
-        int subvectorSize = centered.length / M;
+
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return closetCentroidIndex(getSubVector(centered, m, subvectorSize), codebooks.get(m));
+                    return closetCentroidIndex(getSubVector(centered, m, subvectorSizes), codebooks.get(m));
                 })
                 .toList();
 
@@ -64,17 +64,18 @@ public class PQuantization {
      * @return The approximate original vector.
      */
     public float[] decode(byte[] encoded) {
-        int subvectorSize = centroid.length / M; // The size of each subvector should be based on the original vector dimension.
         float[] reconstructed = new float[centroid.length]; // The reconstructed vector should have the same length as the original vector.
 
+        int offset = 0; // starting position in the reconstructed array for the current subvector
         for (int m = 0; m < M; m++) {
             byte byteValue = encoded[m];
             int centroidIndex = byteValue + 128; // reverse the operation done in toBytes()
             double[] centroidSubvector = codebooks.get(m).get(centroidIndex).getCenter().getPoint();
 
-            for (int i = 0; i < subvectorSize; i++) {
-                reconstructed[m * subvectorSize + i] = (float) centroidSubvector[i];
+            for (int i = 0; i < subvectorSizes[m]; i++) {
+                reconstructed[offset + i] = (float) centroidSubvector[i];
             }
+            offset += subvectorSizes[m]; // move to the next subvector's starting position
         }
 
         // Add back the global centroid to get the approximate original vector.
@@ -102,13 +103,11 @@ public class PQuantization {
         return "[" + String.join(", ", b) + "]";
     }
 
-    static List<List<CentroidCluster<DoublePoint>>> createCodebooks(List<float[]> vectors, int M, int K) {
-        // split vectors into M subvectors
-        int subvectorSize = vectors.get(0).length / M;
+    static List<List<CentroidCluster<DoublePoint>>> createCodebooks(List<float[]> vectors, int M, int K, int[] subvectorSizes) {
         return IntStream.range(0, M).parallel()
                 .mapToObj(m -> {
                     List<DoublePoint> subvectors = vectors.stream().parallel()
-                            .map(vector -> new DoublePoint(getSubVector(vector, m, subvectorSize)))
+                            .map(vector -> new DoublePoint(getSubVector(vector, m, subvectorSizes)))
                             .collect(Collectors.toList());
                     KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(K, 15, PQuantization::distanceBetween);
                     List<CentroidCluster<DoublePoint>> L = clusterer.cluster(subvectors);
@@ -170,10 +169,13 @@ public class PQuantization {
      *
      * @return The m-th subvector.
      */
-    static double[] getSubVector(float[] vector, int m, int subvectorSize) {
-        double[] subvector = new double[subvectorSize];
-        for (int i = 0; i < subvectorSize; i++) {
-            subvector[i] = vector[m * subvectorSize + i];
+    static double[] getSubVector(float[] vector, int m, int[] subvectorSizes) {
+        double[] subvector = new double[subvectorSizes[m]];
+        // calculate the offset for the m-th subvector
+        int offset = Arrays.stream(subvectorSizes, 0, m).sum();
+        // copy
+        for (int i = 0; i < subvectorSizes[m]; i++) {
+            subvector[i] = vector[offset + i];
         }
         return subvector;
     }
@@ -195,5 +197,16 @@ public class PQuantization {
             sum += diff * diff;
         }
         return Math.sqrt(sum);
+    }
+
+    static int[] getSubvectorSizes(int dimensions, int M) {
+        int[] sizes = new int[M];
+        int baseSize = dimensions / M;
+        int remainder = dimensions % M;
+        // distribute the remainder among the subvectors
+        for (int i = 0; i < M; i++) {
+            sizes[i] = baseSize + (i < remainder ? 1 : 0);
+        }
+        return sizes;
     }
 }

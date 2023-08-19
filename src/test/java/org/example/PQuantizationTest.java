@@ -8,8 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
-import static org.junit.jupiter.api.Assertions.assertArrayEquals;
-import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.*;
 
 public class PQuantizationTest {
     private static final float EPSILON = 1e-6f;
@@ -27,7 +26,7 @@ public class PQuantizationTest {
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        List<List<CentroidCluster<DoublePoint>>> result = PQuantization.createCodebooks(testVectors, M, K);
+        List<List<CentroidCluster<DoublePoint>>> result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
         PQuantization.printCodebooks(result);
 
         // quantize the vectors
@@ -64,11 +63,14 @@ public class PQuantizationTest {
                 List.of(new CentroidCluster<>(new DoublePoint(new double[]{5.05})),
                         new CentroidCluster<>(new DoublePoint(new double[]{4.05}))));
 
+        int M = 4;
+        int[] sizes = PQuantization.getSubvectorSizes(4, M);
+
         var vector = new float[]{1.0f, 2.0f, 3.0f, 4.0f};
-        List<Integer> indices = IntStream.range(0, 4)
+        List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return PQuantization.closetCentroidIndex(PQuantization.getSubVector(vector, m, 1), codebooks.get(m));
+                    return PQuantization.closetCentroidIndex(PQuantization.getSubVector(vector, m, sizes), codebooks.get(m));
                 })
                 .toList();
         assertEquals(List.of(0, 0, 0, 1), indices);
@@ -77,8 +79,8 @@ public class PQuantizationTest {
     @Test
     public void testGetSubVector() {
         float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f};
-        assertArrayEquals(new double[]{9.0f, 10.0f}, PQuantization.getSubVector(vector, 0, 2), EPSILON);
-        assertArrayEquals(new double[]{11.0, 12.0}, PQuantization.getSubVector(vector, 1, 2), EPSILON);
+        assertArrayEquals(new double[]{9.0f}, PQuantization.getSubVector(vector, 0, new int[]{1, 1, 1, 1}), EPSILON);
+        assertArrayEquals(new double[]{11.0, 12.0}, PQuantization.getSubVector(vector, 1, new int[]{2, 2}), EPSILON);
     }
 
     @Test
@@ -121,5 +123,32 @@ public class PQuantizationTest {
         }
     }
 
+    @Test
+    public void testGetSubVectorForUnevenSizes() {
+        float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f, 13.0f};
+        var sizes = new int[]{3, 2};
+        assertArrayEquals(new double[]{9.0, 10.0, 11.0}, PQuantization.getSubVector(vector, 0, sizes), EPSILON);
+        assertArrayEquals(new double[]{12.0, 13.0}, PQuantization.getSubVector(vector, 1, sizes), EPSILON);
+    }
 
+    @Test
+    public void testCodebooksForUnevenSizes() {
+        // Using a small, controlled dataset for testing with an uneven size
+        List<float[]> testVectors = List.of(
+                new float[]{1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
+                new float[]{1.1f, 2.1f, 3.1f, 4.1f, 5.1f},
+                new float[]{2.0f, 3.0f, 4.0f, 5.0f, 6.0f},
+                new float[]{2.1f, 3.1f, 4.1f, 5.1f, 6.1f}
+        );
+
+        int M = 3;
+        int K = 2;  // Since our test dataset is small, let's use a smaller K
+
+        List<List<CentroidCluster<DoublePoint>>> result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
+        assertNotNull(result);
+        assertEquals(M, result.size());
+
+        // Print results for manual inspection
+        PQuantization.printCodebooks(result);
+    }
 }
