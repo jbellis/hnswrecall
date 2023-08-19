@@ -1,7 +1,5 @@
 package org.example;
 
-import org.apache.commons.math3.ml.clustering.CentroidCluster;
-import org.apache.commons.math3.ml.clustering.DoublePoint;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
@@ -27,7 +25,8 @@ public class PQuantizationTest {
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        List<List<CentroidCluster<DoublePoint>>> result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
+        var result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
+        // Print results for manual inspection
         PQuantization.printCodebooks(result);
 
         // quantize the vectors
@@ -38,14 +37,13 @@ public class PQuantizationTest {
     @Test
     public void testClosetCentroidIndex2D() {
         // 1. Create a sample codebook
-        List<CentroidCluster<DoublePoint>> codebook = List.of(
-                new CentroidCluster<>(new DoublePoint(new double[]{1.0, 2.0})),
-                new CentroidCluster<>(new DoublePoint(new double[]{5.0, 6.0})),
-                new CentroidCluster<>(new DoublePoint(new double[]{9.0, 10.0}))
-        );
+        var codebook = List.of(
+                new float[]{1.0f, 2.0f},
+                new float[]{5.0f, 6.0f},
+                new float[]{9.0f, 10.0f});
 
         // The closest centroid to [6.0, 7.0] is [5.0, 6.0], which is at index 1.
-        double[] subvector = {6.0, 7.0};
+        float[] subvector = {6.0f, 7.0f};
         int closestIndex = PQuantization.closetCentroidIndex(subvector, codebook);
         assertEquals(1, closestIndex);
     }
@@ -54,15 +52,11 @@ public class PQuantizationTest {
     @Test
     public void testQuantize1D() {
         // 1. Create a sample codebook
-        List<List<CentroidCluster<DoublePoint>>> codebooks = List.of(
-                List.of(new CentroidCluster<>(new DoublePoint(new double[]{1.05})),
-                        new CentroidCluster<>(new DoublePoint(new double[]{2.05}))),
-                List.of(new CentroidCluster<>(new DoublePoint(new double[]{2.05})),
-                        new CentroidCluster<>(new DoublePoint(new double[]{3.05}))),
-                List.of(new CentroidCluster<>(new DoublePoint(new double[]{3.05})),
-                        new CentroidCluster<>(new DoublePoint(new double[]{4.05}))),
-                List.of(new CentroidCluster<>(new DoublePoint(new double[]{5.05})),
-                        new CentroidCluster<>(new DoublePoint(new double[]{4.05}))));
+        var codebooks = List.of(
+                List.of(new float[]{1.05f}, new float[]{2.05f}),
+                List.of(new float[]{2.05f}, new float[]{3.05f}),
+                List.of(new float[]{3.05f}, new float[]{4.05f}),
+                List.of(new float[]{5.05f}, new float[]{4.05f}));
 
         int M = 4;
         int[] sizes = PQuantization.getSubvectorSizes(4, M);
@@ -80,15 +74,15 @@ public class PQuantizationTest {
     @Test
     public void testGetSubVector() {
         float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f};
-        assertArrayEquals(new double[]{9.0f}, PQuantization.getSubVector(vector, 0, new int[]{1, 1, 1, 1}), EPSILON);
-        assertArrayEquals(new double[]{11.0, 12.0}, PQuantization.getSubVector(vector, 1, new int[]{2, 2}), EPSILON);
+        assertArrayEquals(new float[]{9.0f}, PQuantization.getSubVector(vector, 0, new int[]{1, 1, 1, 1}), EPSILON);
+        assertArrayEquals(new float[]{11.0f, 12.0f}, PQuantization.getSubVector(vector, 1, new int[]{2, 2}), EPSILON);
     }
 
     @Test
     public void testDistanceBetween() {
-        double[] vector1 = new double[]{1.0, 2.0};
-        double[] vector2 = new double[]{3.0, 4.0};
-        double[] vector3 = new double[]{5.0, 1.0};
+        float[] vector1 = new float[]{1.0f, 2.0f};
+        float[] vector2 = new float[]{3.0f, 4.0f};
+        float[] vector3 = new float[]{5.0f, 1.0f};
 
         assertEquals(0, distanceBetween(vector1, vector1), EPSILON);
         assertEquals(Math.sqrt(8), distanceBetween(vector1, vector2), EPSILON);
@@ -128,8 +122,8 @@ public class PQuantizationTest {
     public void testGetSubVectorForUnevenSizes() {
         float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f, 13.0f};
         var sizes = new int[]{3, 2};
-        assertArrayEquals(new double[]{9.0, 10.0, 11.0}, PQuantization.getSubVector(vector, 0, sizes), EPSILON);
-        assertArrayEquals(new double[]{12.0, 13.0}, PQuantization.getSubVector(vector, 1, sizes), EPSILON);
+        assertArrayEquals(new float[]{9.0f, 10.0f, 11.0f}, PQuantization.getSubVector(vector, 0, sizes), EPSILON);
+        assertArrayEquals(new float[]{12.0f, 13.0f}, PQuantization.getSubVector(vector, 1, sizes), EPSILON);
     }
 
     @Test
@@ -145,47 +139,46 @@ public class PQuantizationTest {
         int M = 3;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        List<List<CentroidCluster<DoublePoint>>> result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
+        var result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
         assertNotNull(result);
         assertEquals(M, result.size());
-
         // Print results for manual inspection
-        PQuantization.printCodebooks(result);
+         PQuantization.printCodebooks(result);
     }
 
     @Test
     public void testSameLengthVectors() {
-        double[] v1 = {1.0, 2.0, 3.0, 4.0};
-        double[] v2 = {2.0, 3.0, 4.0, 5.0};
-        double expected = Math.sqrt(4.0);
-        double result = distanceBetween(v1, v2);
+        float[] v1 = {1.0f, 2.0f, 3.0f, 4.0f};
+        float[] v2 = {2.0f, 3.0f, 4.0f, 5.0f};
+        float expected = (float) Math.sqrt(4.0);
+        float result = distanceBetween(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 
     @Test
     public void testVectorLengthNotDivisibleBySpeciesPreferred() {
-        double[] v1 = {1.0, 2.0, 3.0, 4.0, 5.0};
-        double[] v2 = {2.0, 3.0, 4.0, 5.0, 6.0};
-        double expected = Math.sqrt(5.0);
-        double result = distanceBetween(v1, v2);
+        float[] v1 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
+        float[] v2 = {2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+        float expected = (float) Math.sqrt(5.0);
+        float result = distanceBetween(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 
     @Test
     public void testEdgeCaseEmptyVectors() {
-        double[] v1 = {};
-        double[] v2 = {};
-        double expected = 0.0;
-        double result = distanceBetween(v1, v2);
+        float[] v1 = {};
+        float[] v2 = {};
+        float expected = 0.0f;
+        float result = distanceBetween(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 
     @Test
     public void testEdgeCaseSingleElementVectors() {
-        double[] v1 = {1.0};
-        double[] v2 = {2.0};
-        double expected = 1.0;
-        double result = distanceBetween(v1, v2);
+        float[] v1 = {1.0f};
+        float[] v2 = {2.0f};
+        float expected = 1.0f;
+        float result = distanceBetween(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 }

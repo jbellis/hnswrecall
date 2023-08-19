@@ -5,14 +5,17 @@ import java.util.List;
 import java.util.Random;
 import java.util.function.BiFunction;
 
+import static org.example.util.SimdOps.simdDivInPlace;
+import static org.example.util.SimdOps.simdSum;
+
 public class KMeansPlusPlusFloatClusterer {
 
     private final int k;
     private final int maxIterations;
-    private final BiFunction<float[], float[], Double> distanceFunction;
+    private final BiFunction<float[], float[], Float> distanceFunction;
     private final Random random;
 
-    public KMeansPlusPlusFloatClusterer(int k, int maxIterations, BiFunction<float[], float[], Double> distanceFunction) {
+    public KMeansPlusPlusFloatClusterer(int k, int maxIterations, BiFunction<float[], float[], Float> distanceFunction) {
         if (k <= 0) {
             throw new IllegalArgumentException("Number of clusters must be positive.");
         }
@@ -39,11 +42,12 @@ public class KMeansPlusPlusFloatClusterer {
                     // Handle empty cluster by re-initializing the centroid
                     newCentroids.add(getNextCentroid(centroids, points));
                 } else {
-                    newCentroids.add(computeCentroid(clusterPoints));
+                    newCentroids.add(centroidOf(clusterPoints));
                 }
             }
             reassignPointsToClusters(newCentroids, points, assignments);
             centroids = newCentroids;
+            System.out.println("Iteration " + i + " complete");
         }
 
         return centroids;
@@ -132,21 +136,14 @@ public class KMeansPlusPlusFloatClusterer {
         return clusterPoints;
     }
 
-    private float[] computeCentroid(List<float[]> points) {
+    public static float[] centroidOf(List<float[]> points) {
         if (points.isEmpty()) {
             throw new IllegalArgumentException("Can't compute centroid of empty points list");
         }
 
-        float[] centroid = new float[points.get(0).length];
-        for (float[] point : points) {
-            for (int i = 0; i < centroid.length; i++) {
-                centroid[i] += point[i];
-            }
-        }
-        for (int i = 0; i < centroid.length; i++) {
-            centroid[i] /= points.size();
-        }
+        float[] centroid = simdSum(points);
+        simdDivInPlace(centroid, points.size());
+
         return centroid;
     }
-
 }

@@ -1,22 +1,19 @@
 package org.example;
 
-import jdk.incubator.vector.DoubleVector;
-import jdk.incubator.vector.VectorOperators;
-import org.apache.commons.math3.ml.clustering.CentroidCluster;
-import org.apache.commons.math3.ml.clustering.DoublePoint;
-import org.apache.commons.math3.ml.clustering.KMeansPlusPlusClusterer;
+import org.apache.lucene.util.VectorUtil;
+import org.example.util.KMeansPlusPlusFloatClusterer;
 
-import java.util.AbstractMap;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.example.util.SimdOps.simdAddInPlace;
+import static org.example.util.SimdOps.simdSub;
+
 public class PQuantization {
-    private final List<List<CentroidCluster<DoublePoint>>> codebooks;
+    private final List<List<float[]>> codebooks;
     private final int M;
-    private final double[] centroid;
+    private final float[] centroid;
     private final int[] subvectorSizes; // added member variable
 
     /**
@@ -28,10 +25,10 @@ public class PQuantization {
      */
     public PQuantization(List<float[]> vectors, int M, int K) {
         this.M = M;
-        centroid = centroidOf(vectors);
+        centroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
         subvectorSizes = getSubvectorSizes(vectors.get(0).length, M);
         // subtract the centroid from each vector
-        var centeredVectors = vectors.stream().parallel().map(v -> subFrom(v, centroid)).toList();
+        var centeredVectors = vectors.stream().parallel().map(v -> simdSub(v, centroid)).toList();
         // TODO compute optimal rotation as well
         codebooks = createCodebooks(centeredVectors, M, K, subvectorSizes);
     }
@@ -46,7 +43,7 @@ public class PQuantization {
      * @return The quantized value represented as an integer.
      */
     public byte[] encode(float[] vector) {
-        float[] centered = subFrom(vector, centroid);
+        float[] centered = simdSub(vector, centroid);
 
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
@@ -70,18 +67,13 @@ public class PQuantization {
         for (int m = 0; m < M; m++) {
             byte byteValue = encoded[m];
             int centroidIndex = byteValue + 128; // reverse the operation done in toBytes()
-            double[] centroidSubvector = codebooks.get(m).get(centroidIndex).getCenter().getPoint();
-
-            for (int i = 0; i < subvectorSizes[m]; i++) {
-                reconstructed[offset + i] = (float) centroidSubvector[i];
-            }
+            float[] centroidSubvector = codebooks.get(m).get(centroidIndex);
+            System.arraycopy(centroidSubvector, 0, reconstructed, offset, subvectorSizes[m]);
             offset += subvectorSizes[m]; // move to the next subvector's starting position
         }
 
         // Add back the global centroid to get the approximate original vector.
-        for (int i = 0; i < reconstructed.length; i++) {
-            reconstructed[i] += (float) centroid[i];
-        }
+        simdAddInPlace(reconstructed, centroid);
 
         return reconstructed;
     }
@@ -90,49 +82,44 @@ public class PQuantization {
         return centroid.length;
     }
 
-    static void printCodebooks(List<List<CentroidCluster<DoublePoint>>> result) {
-        List<List<String>> strings = result.stream().map(L -> L.stream().map(C -> arraySummary(C.getCenter().getPoint())).toList()).toList();
-        System.out.printf("Codebooks: [%s]%n", String.join("\n ", strings.stream().map(L -> "[" + String.join(", ", L) + "]").toList()));
+    static void printCodebooks(List<List<float[]>> codebooks) {
+        List<List<String>> strings = codebooks.stream()
+                .map(L -> L.stream()
+                        .map(PQuantization::arraySummary)
+                        .collect(Collectors.toList()))
+                .toList();
+        System.out.printf("Codebooks: [%s]%n", String.join("\n ", strings.stream()
+                .map(L -> "[" + String.join(", ", L) + "]")
+                .toList()));
     }
 
-    private static String arraySummary(double[] a) {
-        String[] b = Arrays.stream(a, 0, Math.min(4, a.length)).mapToObj(String::valueOf).toArray(String[]::new);
+    private static String arraySummary(float[] a) {
+        List<String> b = new ArrayList<>();
+        for (int i = 0; i < Math.min(4, a.length); i++) {
+            b.add(String.valueOf(a[i]));
+        }
         if (a.length > 4) {
-            b[3] = "... (%s)".formatted(a.length);
+            b.set(3, "... (" + a.length + ")");
         }
         return "[" + String.join(", ", b) + "]";
     }
 
-    static List<List<CentroidCluster<DoublePoint>>> createCodebooks(List<float[]> vectors, int M, int K, int[] subvectorSizes) {
+
+    static List<List<float[]>> createCodebooks(List<float[]> vectors, int M, int K, int[] subvectorSizes) {
         return IntStream.range(0, M).parallel()
                 .mapToObj(m -> {
-                    List<DoublePoint> subvectors = vectors.stream().parallel()
-                            .map(vector -> new DoublePoint(getSubVector(vector, m, subvectorSizes)))
-                            .collect(Collectors.toList());
-                    KMeansPlusPlusClusterer<DoublePoint> clusterer = new KMeansPlusPlusClusterer<>(K, 15, PQuantization::distanceBetween);
+                    List<float[]> subvectors = vectors.stream().parallel()
+                            .map(vector -> getSubVector(vector, m, subvectorSizes))
+                            .toList();
+                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, PQuantization::distanceBetween);
                     return clusterer.cluster(subvectors);
                 })
                 .toList();
     }
-
-    static float[] subFrom(float[] v, double[] centroid) {
-        // TODO use vectorized operations
-        float[] centered = new float[v.length];
-        for (int i = 0; i < v.length; i++) {
-            centered[i] = v[i] - (float) centroid[i];
-        }
-        return centered;
-    }
-
-    static double[] centroidOf(List<float[]> vectors) {
-        return IntStream.range(0, vectors.get(0).length).mapToDouble(i -> {
-            return vectors.stream().parallel().mapToDouble(v -> v[i]).sum() / vectors.size();
-        }).toArray();
-    }
-
-    static int closetCentroidIndex(double[] subvector, List<CentroidCluster<DoublePoint>> codebook) {
+    
+    static int closetCentroidIndex(float[] subvector, List<float[]> codebook) {
         return IntStream.range(0, codebook.size())
-                .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, distanceBetween(subvector, codebook.get(i).getCenter().getPoint())))
+                .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, distanceBetween(subvector, codebook.get(i))))
                 .min(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
                 .get();
@@ -157,37 +144,16 @@ public class PQuantization {
      *
      * @return The m-th subvector.
      */
-    static double[] getSubVector(float[] vector, int m, int[] subvectorSizes) {
-        double[] subvector = new double[subvectorSizes[m]];
+    static float[] getSubVector(float[] vector, int m, int[] subvectorSizes) {
+        float[] subvector = new float[subvectorSizes[m]];
         // calculate the offset for the m-th subvector
         int offset = Arrays.stream(subvectorSizes, 0, m).sum();
-        // copy
-        for (int i = 0; i < subvectorSizes[m]; i++) {
-            subvector[i] = vector[offset + i];
-        }
+        System.arraycopy(vector, offset, subvector, 0, subvectorSizes[m]);
         return subvector;
     }
 
-    static double distanceBetween(double[] vector1, double[] vector2) {
-        var sum = 0.0;
-        int vectorizedLength = (vector1.length / DoubleVector.SPECIES_PREFERRED.length()) * DoubleVector.SPECIES_PREFERRED.length();
-
-        // Process the vectorized part
-        for (var i = 0; i < vectorizedLength; i += DoubleVector.SPECIES_PREFERRED.length()) {
-            var a = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector1, i);
-            var b = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector2, i);
-            var diff = a.sub(b);
-            var square = diff.mul(diff);
-            sum += square.reduceLanes(VectorOperators.ADD);
-        }
-
-        // Process the tail
-        for (var i = vectorizedLength; i < vector1.length; i++) {
-            var diff = vector1[i] - vector2[i];
-            sum += diff * diff;
-        }
-
-        return Math.sqrt(sum);
+    static float distanceBetween(float[] vector1, float[] vector2) {
+        return (float) Math.sqrt(VectorUtil.squareDistance(vector1, vector2));
     }
 
     static int[] getSubvectorSizes(int dimensions, int M) {

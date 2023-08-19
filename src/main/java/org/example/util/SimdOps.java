@@ -1,0 +1,87 @@
+package org.example.util;
+
+import jdk.incubator.vector.FloatVector;
+
+import java.util.List;
+
+public class SimdOps {
+    static float[] simdSum(List<float[]> vectors) {
+        if (vectors == null || vectors.isEmpty()) {
+            throw new IllegalArgumentException("Input list cannot be null or empty");
+        }
+
+        int dimension = vectors.get(0).length;
+        float[] sum = new float[dimension];
+
+        // Process each vector from the list
+        for (float[] vector : vectors) {
+            simdAddInPlace(sum, vector);
+        }
+
+        return sum;
+    }
+
+    static void simdDivInPlace(float[] vector, float divisor) {
+        int vectorizedLength = (vector.length / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
+
+        // Process the vectorized part
+        for (int i = 0; i < vectorizedLength; i += FloatVector.SPECIES_PREFERRED.length()) {
+            var a = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, vector, i);
+            var divResult = a.div(divisor);
+            divResult.intoArray(vector, i);
+        }
+
+        // Process the tail
+        for (int i = vectorizedLength; i < vector.length; i++) {
+            vector[i] = vector[i] / divisor;
+        }
+    }
+
+    public static void simdAddInPlace(float[] v1, float[] v2) {
+        if (v1.length != v2.length) {
+            throw new IllegalArgumentException("Vectors must have the same length");
+        }
+
+        int vectorizedLength = (v1.length / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
+
+        // Process the vectorized part
+        for (int i = 0; i < vectorizedLength; i += FloatVector.SPECIES_PREFERRED.length()) {
+            var a = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, v1, i);
+            var b = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, v2, i);
+            var addResult = a.add(b);
+            addResult.intoArray(v1, i);
+        }
+
+        // Process the tail
+        for (int i = vectorizedLength; i < v1.length; i++) {
+            v1[i] = v1[i] + v2[i];
+        }
+    }
+
+    /**
+     * @return lhs - rhs, element-wise
+     */
+    public static float[] simdSub(float[] lhs, float[] rhs) {
+        if (lhs.length != rhs.length) {
+            throw new IllegalArgumentException("Vectors must have the same length");
+        }
+
+        float[] result = new float[lhs.length];
+        int vectorizedLength = (lhs.length / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
+
+        // Process the vectorized part
+        for (int i = 0; i < vectorizedLength; i += FloatVector.SPECIES_PREFERRED.length()) {
+            var a = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, lhs, i);
+            var b = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, rhs, i);
+            var subResult = a.sub(b);
+            subResult.intoArray(result, i);
+        }
+
+        // Process the tail
+        for (int i = vectorizedLength; i < lhs.length; i++) {
+            result[i] = lhs[i] - rhs[i];
+        }
+
+        return result;
+    }
+}
