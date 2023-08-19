@@ -1,12 +1,12 @@
 package org.example;
 
+import org.apache.lucene.util.VectorUtil;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
-import static org.example.PQuantization.distanceBetween;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class PQuantizationTest {
@@ -84,9 +84,9 @@ public class PQuantizationTest {
         float[] vector2 = new float[]{3.0f, 4.0f};
         float[] vector3 = new float[]{5.0f, 1.0f};
 
-        assertEquals(0, distanceBetween(vector1, vector1), EPSILON);
-        assertEquals(Math.sqrt(8), distanceBetween(vector1, vector2), EPSILON);
-        assertEquals(Math.sqrt(17), distanceBetween(vector1, vector3), EPSILON);
+        assertEquals(0, VectorUtil.squareDistance(vector1, vector1), EPSILON);
+        assertEquals(8, VectorUtil.squareDistance(vector1, vector2), EPSILON);
+        assertEquals(17, VectorUtil.squareDistance(vector1, vector3), EPSILON);
     }
 
     @Test
@@ -150,8 +150,8 @@ public class PQuantizationTest {
     public void testSameLengthVectors() {
         float[] v1 = {1.0f, 2.0f, 3.0f, 4.0f};
         float[] v2 = {2.0f, 3.0f, 4.0f, 5.0f};
-        float expected = (float) Math.sqrt(4.0);
-        float result = distanceBetween(v1, v2);
+        float expected = 4.0f;
+        float result = VectorUtil.squareDistance(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 
@@ -159,8 +159,8 @@ public class PQuantizationTest {
     public void testVectorLengthNotDivisibleBySpeciesPreferred() {
         float[] v1 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f};
         float[] v2 = {2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
-        float expected = (float) Math.sqrt(5.0);
-        float result = distanceBetween(v1, v2);
+        float expected = 5.0f;
+        float result = VectorUtil.squareDistance(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 
@@ -169,7 +169,7 @@ public class PQuantizationTest {
         float[] v1 = {};
         float[] v2 = {};
         float expected = 0.0f;
-        float result = distanceBetween(v1, v2);
+        float result = VectorUtil.squareDistance(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 
@@ -178,7 +178,7 @@ public class PQuantizationTest {
         float[] v1 = {1.0f};
         float[] v2 = {2.0f};
         float expected = 1.0f;
-        float result = distanceBetween(v1, v2);
+        float result = VectorUtil.squareDistance(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
 }

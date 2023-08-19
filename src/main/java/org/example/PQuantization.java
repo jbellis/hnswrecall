@@ -111,7 +111,7 @@ public class PQuantization {
                     List<float[]> subvectors = vectors.stream().parallel()
                             .map(vector -> getSubVector(vector, m, subvectorSizes))
                             .toList();
-                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, PQuantization::distanceBetween);
+                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, (vector1, vector2) -> VectorUtil.squareDistance(vector1, vector2));
                     return clusterer.cluster(subvectors);
                 })
                 .toList();
@@ -119,7 +119,7 @@ public class PQuantization {
     
     static int closetCentroidIndex(float[] subvector, List<float[]> codebook) {
         return IntStream.range(0, codebook.size())
-                .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, distanceBetween(subvector, codebook.get(i))))
+                .mapToObj(i -> new AbstractMap.SimpleEntry<>(i, VectorUtil.squareDistance(subvector, codebook.get(i))))
                 .min(Map.Entry.comparingByValue())
                 .map(Map.Entry::getKey)
                 .get();
@@ -150,10 +150,6 @@ public class PQuantization {
         int offset = Arrays.stream(subvectorSizes, 0, m).sum();
         System.arraycopy(vector, offset, subvector, 0, subvectorSizes[m]);
         return subvector;
-    }
-
-    static float distanceBetween(float[] vector1, float[] vector2) {
-        return (float) Math.sqrt(VectorUtil.squareDistance(vector1, vector2));
     }
 
     static int[] getSubvectorSizes(int dimensions, int M) {

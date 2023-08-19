@@ -1,10 +1,29 @@
 package org.example.util;
 
 import jdk.incubator.vector.FloatVector;
+import jdk.incubator.vector.VectorOperators;
 
 import java.util.List;
 
 public class SimdOps {
+    static float simdSum(float[] vector) {
+        float sum = 0.0f;
+        int vectorizedLength = (vector.length / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
+
+        // Process the vectorized part
+        for (int i = 0; i < vectorizedLength; i += FloatVector.SPECIES_PREFERRED.length()) {
+            FloatVector a = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, vector, i);
+            sum += a.reduceLanes(VectorOperators.ADD);
+        }
+
+        // Process the tail
+        for (int i = vectorizedLength; i < vector.length; i++) {
+            sum += vector[i];
+        }
+
+        return sum;
+    }
+
     static float[] simdSum(List<float[]> vectors) {
         if (vectors == null || vectors.isEmpty()) {
             throw new IllegalArgumentException("Input list cannot be null or empty");

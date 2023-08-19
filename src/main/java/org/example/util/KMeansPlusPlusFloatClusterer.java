@@ -1,6 +1,7 @@
 package org.example.util;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 import java.util.function.BiFunction;
@@ -14,7 +15,16 @@ public class KMeansPlusPlusFloatClusterer {
     private final int maxIterations;
     private final BiFunction<float[], float[], Float> distanceFunction;
     private final Random random;
+    private final List<List<float[]>> clusterPoints;
 
+    /**
+     * Constructs a KMeansPlusPlusFloatClusterer with the specified number of clusters,
+     * maximum iterations, and distance function.
+     *
+     * @param k number of clusters.
+     * @param maxIterations maximum number of iterations for the clustering process.
+     * @param distanceFunction a function to compute the distance between two points.
+     */
     public KMeansPlusPlusFloatClusterer(int k, int maxIterations, BiFunction<float[], float[], Float> distanceFunction) {
         if (k <= 0) {
             throw new IllegalArgumentException("Number of clusters must be positive.");
@@ -23,8 +33,18 @@ public class KMeansPlusPlusFloatClusterer {
         this.maxIterations = maxIterations;
         this.distanceFunction = distanceFunction;
         this.random = new Random();
+        this.clusterPoints = new ArrayList<>();
+        for (int i = 0; i < k; i++) {
+            this.clusterPoints.add(new ArrayList<>());
+        }
     }
 
+    /**
+     * Performs clustering on the provided set of points.
+     *
+     * @param points a list of points to be clustered.
+     * @return a list of cluster centroids.
+     */
     public List<float[]> cluster(List<float[]> points) {
         if (k > points.size()) {
             throw new IllegalArgumentException("Number of clusters cannot exceed number of points.");
@@ -37,76 +57,123 @@ public class KMeansPlusPlusFloatClusterer {
         for (int i = 0; i < maxIterations; i++) {
             List<float[]> newCentroids = new ArrayList<>();
             for (int j = 0; j < centroids.size(); j++) {
-                List<float[]> clusterPoints = getPointsForCluster(j, points, assignments);
-                if (clusterPoints.isEmpty()) {
+                if (clusterPoints.get(j).isEmpty()) {
                     // Handle empty cluster by re-initializing the centroid
-                    newCentroids.add(getNextCentroid(centroids, points));
+                    newCentroids.add(points.get(random.nextInt(points.size())));
                 } else {
-                    newCentroids.add(centroidOf(clusterPoints));
+                    newCentroids.add(centroidOf(clusterPoints.get(j)));
                 }
             }
-            reassignPointsToClusters(newCentroids, points, assignments);
+            assignPointsToClusters(newCentroids, points, assignments);
             centroids = newCentroids;
-            System.out.println("Iteration " + i + " complete");
         }
 
         return centroids;
     }
 
+    /**
+     * Chooses the initial centroids for clustering.
+     *
+     * The first centroid is chosen randomly from the data points. Subsequent centroids
+     * are selected with a probability proportional to the square of their distance
+     * to the nearest existing centroid. This ensures that the centroids are spread out
+     * across the data and not initialized too closely to each other, leading to better
+     * convergence and potentially improved final clusterings.
+     * *
+     * @param points a list of points from which centroids are chosen.
+     * @return a list of initial centroids.
+     */
     private List<float[]> chooseInitialCentroids(List<float[]> points) {
         List<float[]> centroids = new ArrayList<>();
-        centroids.add(points.get(random.nextInt(points.size())));
+        float[] distances = new float[points.size()];
+        Arrays.fill(distances, Float.MAX_VALUE);
 
+        // Choose the first centroid randomly
+        float[] firstCentroid = points.get(random.nextInt(points.size()));
+        centroids.add(firstCentroid);
+        updateDistances(firstCentroid, points, distances);
+
+        // For each subsequent centroid
         for (int i = 1; i < k; i++) {
-            float[] nextCentroid = getNextCentroid(centroids, points);
+            float totalDistance = 0;
+            for (float distance : distances) {
+                totalDistance += distance;
+            }
+
+            float r = random.nextFloat() * totalDistance;
+            int selectedIdx = -1;
+            for (int j = 0; j < distances.length; j++) {
+                r -= distances[j];
+                if (r <= 0) {
+                    selectedIdx = j;
+                    break;
+                }
+            }
+
+            if (selectedIdx == -1) {
+                throw new IllegalStateException("Failed to select a centroid using the weighted distribution.");
+            }
+
+            float[] nextCentroid = points.get(selectedIdx);
             centroids.add(nextCentroid);
-        }
 
-        return centroids;
-    }
-
-    private float[] getNextCentroid(List<float[]> centroids, List<float[]> points) {
-        double[] distances = new double[points.size()];
-        double total = 0;
-
-        for (int i = 0; i < points.size(); i++) {
-            distances[i] = minDistanceToCentroid(points.get(i), centroids);
-            total += distances[i];
-        }
-
-        double r = random.nextDouble() * total;
-
-        for (int i = 0; i < distances.length; i++) {
-            r -= distances[i];
-            if (r <= 0) {
-                return points.get(i);
+            // Update distances, but only if the new centroid provides a closer distance
+            for (int j = 0; j < points.size(); j++) {
+                float newDistance = distanceFunction.apply(points.get(j), nextCentroid);
+                distances[j] = Math.min(distances[j], newDistance);
             }
         }
 
-        // Throw if we couldn't find a centroid
-        throw new IllegalStateException("Failed to select a centroid using the weighted distribution");
+        return centroids;
     }
 
+    /**
+     * Updates the distances of points to the closest centroid.
+     *
+     * @param centroid the centroid to compute distances.
+     * @param points a list of points.
+     * @param distances an array to store the computed distances.
+     */
+    private void updateDistances(float[] centroid, List<float[]> points, float[] distances) {
+        for (int i = 0; i < points.size(); i++) {
+            float distance = distanceFunction.apply(points.get(i), centroid);
+            distances[i] = Math.min(distances[i], distance);
+        }
+    }
+
+    /**
+     * Assigns points to the nearest cluster.
+     *
+     * @param centroids a list of centroids.
+     * @param points a list of points to be assigned.
+     * @param assignments an array to store the cluster assignments.
+     */
     private void assignPointsToClusters(List<float[]> centroids, List<float[]> points, int[] assignments) {
+        for (List<float[]> cluster : clusterPoints) {
+            cluster.clear();
+        }
+
         for (int i = 0; i < points.size(); i++) {
             float[] point = points.get(i);
-            assignments[i] = getNearestCluster(point, centroids);
+            int clusterIndex = getNearestCluster(point, centroids);
+            clusterPoints.get(clusterIndex).add(point);
+            assignments[i] = clusterIndex;
         }
     }
 
-    private void reassignPointsToClusters(List<float[]> newCentroids, List<float[]> points, int[] assignments) {
-        for (int i = 0; i < points.size(); i++) {
-            float[] point = points.get(i);
-            assignments[i] = getNearestCluster(point, newCentroids);
-        }
-    }
-
+    /**
+     * Determines the nearest cluster for a given point.
+     *
+     * @param point the point to be assigned.
+     * @param centroids a list of centroids.
+     * @return the index of the nearest cluster.
+     */
     private int getNearestCluster(float[] point, List<float[]> centroids) {
-        double minDistance = Double.MAX_VALUE;
+        float minDistance = Float.MAX_VALUE;
         int nearestCluster = 0;
         for (int i = 0; i < centroids.size(); i++) {
             float[] centroid = centroids.get(i);
-            double distance = distanceFunction.apply(point, centroid);
+            float distance = distanceFunction.apply(point, centroid);
             if (distance < minDistance) {
                 minDistance = distance;
                 nearestCluster = i;
@@ -115,27 +182,12 @@ public class KMeansPlusPlusFloatClusterer {
         return nearestCluster;
     }
 
-    private double minDistanceToCentroid(float[] point, List<float[]> centroids) {
-        double minDistance = Double.MAX_VALUE;
-        for (float[] centroid : centroids) {
-            double distance = distanceFunction.apply(point, centroid);
-            if (distance < minDistance) {
-                minDistance = distance;
-            }
-        }
-        return minDistance;
-    }
-
-    private List<float[]> getPointsForCluster(int centroidIndex, List<float[]> points, int[] assignments) {
-        List<float[]> clusterPoints = new ArrayList<>();
-        for (int i = 0; i < points.size(); i++) {
-            if (assignments[i] == centroidIndex) {
-                clusterPoints.add(points.get(i));
-            }
-        }
-        return clusterPoints;
-    }
-
+    /**
+     * Computes the centroid of a set of points.
+     *
+     * @param points a list of points.
+     * @return the computed centroid.
+     */
     public static float[] centroidOf(List<float[]> points) {
         if (points.isEmpty()) {
             throw new IllegalArgumentException("Can't compute centroid of empty points list");
