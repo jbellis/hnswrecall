@@ -42,6 +42,9 @@ public class KMeansPlusPlusFloatClustererTest {
 
         List<float[]> centroids = clusterer.cluster(points);
 
+        // Sort centroids based on their first dimension
+        centroids.sort(Comparator.comparingDouble(a -> a[0]));
+
         assertEquals(2, centroids.size());
         assertArrayEquals(new float[] {1.1f, 1.1f}, centroids.get(0), 0.01f);
         assertArrayEquals(new float[] {10f, 10.1f}, centroids.get(1), 0.01f);
