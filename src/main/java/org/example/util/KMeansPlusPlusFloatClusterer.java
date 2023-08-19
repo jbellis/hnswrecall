@@ -61,8 +61,7 @@ public class KMeansPlusPlusFloatClusterer {
             List<float[]> newCentroids = new ArrayList<>();
             for (int j = 0; j < centroids.size(); j++) {
                 if (clusterPoints.get(j).isEmpty()) {
-                    // Handle empty cluster by re-initializing the centroid
-                    newCentroids.add(points.get(random.nextInt(points.size())));
+                    newCentroids.add(getPointFromLargestVarianceCluster(centroids));
                 } else {
                     newCentroids.add(centroidOf(clusterPoints.get(j)));
                 }
@@ -199,5 +198,59 @@ public class KMeansPlusPlusFloatClusterer {
         simdDivInPlace(centroid, points.size());
 
         return centroid;
+    }
+
+    private float[] getPointFromLargestVarianceCluster(List<float[]> centroids) {
+        double maxVariance = Double.NEGATIVE_INFINITY;
+        List<float[]> selectedCluster = null;
+
+        for (int i = 0; i < clusterPoints.size(); i++) {
+            List<float[]> currentCluster = clusterPoints.get(i);
+            if (!currentCluster.isEmpty()) {
+                // Compute the distance variance of the current cluster
+                float[] center = centroids.get(i);
+                Variance varianceCalculator = new Variance();
+                for (float[] point : currentCluster) {
+                    double distance = distanceFunction.apply(point, center);
+                    varianceCalculator.increment(distance);
+                }
+                double variance = varianceCalculator.getResult();
+
+                // Select the cluster with the largest variance
+                if (variance > maxVariance) {
+                    maxVariance = variance;
+                    selectedCluster = currentCluster;
+                }
+            }
+        }
+
+        // If all clusters are empty (which shouldn't happen)
+        if (selectedCluster == null) {
+            throw new IllegalStateException("All clusters are empty in K-Means.");
+        }
+
+        // Extract a random point from the selected cluster
+        return selectedCluster.get(random.nextInt(selectedCluster.size()));
+    }
+
+    private class Variance {
+        private int count = 0;
+        private double mean = 0.0;
+        private double M2 = 0.0;
+
+        public void increment(double value) {
+            count++;
+            double delta = value - mean;
+            mean += delta / count;
+            double delta2 = value - mean;
+            M2 += delta * delta2;
+        }
+
+        public double getResult() {
+            if (count < 2) {
+                return 0.0;
+            }
+            return M2 / count;
+        }
     }
 }
