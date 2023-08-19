@@ -98,8 +98,17 @@ public class Bench {
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
+
+                // re-rank the quantized results by the original similarity function
+                Integer[] raw = new Integer[nn.size()];
+                for (int j = raw.length - 1; j >= 0; j--) {
+                    raw[j] = nn.pop();
+                }
+                Arrays.sort(raw, Comparator.comparingDouble((Integer j) -> ds.similarityFunction.compare(queryVector, ds.baseVectors.get(j))).reversed());
+                int[] a = Arrays.stream(raw).mapToInt(Integer::intValue).toArray();
+
                 var gt = ds.groundTruth.get(i);
-                var n = topKCorrect(topK, nn, gt);
+                var n = topKCorrect(topK, a, gt);
                 topKfound.add(n);
                 nodesVisited.add(nn.visitedCount());
             });
@@ -196,13 +205,13 @@ public class Bench {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
         var files = List.of(
-                "hdf5/nytimes-256-angular.hdf5",
-                "hdf5/glove-100-angular.hdf5",
-                "hdf5/glove-200-angular.hdf5",
+//                "hdf5/nytimes-256-angular.hdf5",
+//                "hdf5/glove-100-angular.hdf5",
+//                "hdf5/glove-200-angular.hdf5",
                 "hdf5/sift-128-euclidean.hdf5");
-        var mGrid = List.of(8, 12, 16, 24, 32, 48, 64);
-        var efConstructionGrid = List.of(60, 80, 100, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 2, 4);
+        var mGrid = List.of(16); // 8, 12, 16, 24, 32, 48, 64);
+        var efConstructionGrid = List.of(100); // 60, 80, 100, 120, 160, 200, 400, 600, 800);
+        var efSearchFactor = List.of(1, 4, 8, 16);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
@@ -212,8 +221,8 @@ public class Bench {
 
         // tiny dataset, don't waste time building a huge index
         files = List.of("hdf5/fashion-mnist-784-euclidean.hdf5");
-        mGrid = List.of(8, 12, 16, 24);
-        efConstructionGrid = List.of(40, 60, 80, 100, 120, 160);
+//        mGrid = List.of(8, 12, 16, 24);
+//        efConstructionGrid = List.of(40, 60, 80, 100, 120, 160);
         for (var f : files) {
             gridSearch(f, mGrid, efConstructionGrid, efSearchFactor);
         }
@@ -223,7 +232,7 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = 64;
+        var pqDims = 32;
         PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
         System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
