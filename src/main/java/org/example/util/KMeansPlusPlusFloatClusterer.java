@@ -9,8 +9,13 @@ import java.util.function.BiFunction;
 import static org.example.util.SimdOps.simdDivInPlace;
 import static org.example.util.SimdOps.simdSum;
 
+/**
+ * A KMeans++ implementation for float vectors.  Optimizes to use SIMD vector
+ * instructions, and to use the triangle inequality to skip distance calculations.
+ * Roughly 3x faster than using the apache commons math implementation (with
+ * conversions to double[]).
+ */
 public class KMeansPlusPlusFloatClusterer {
-
     private final int k;
     private final int maxIterations;
     private final BiFunction<float[], float[], Float> distanceFunction;
@@ -142,11 +147,7 @@ public class KMeansPlusPlusFloatClusterer {
     }
 
     /**
-     * Assigns points to the nearest cluster.
-     *
-     * @param centroids a list of centroids.
-     * @param points a list of points to be assigned.
-     * @param assignments an array to store the cluster assignments.
+     * Assigns points to the nearest cluster.  The results are stored as ordinals in `assignments`
      */
     private void assignPointsToClusters(List<float[]> centroids, List<float[]> points, int[] assignments) {
         for (List<float[]> cluster : clusterPoints) {
@@ -161,6 +162,9 @@ public class KMeansPlusPlusFloatClusterer {
         }
     }
 
+    /**
+     * Return the index of the closest centroid to the given point
+     */
     private int getNearestCluster(float[] point, List<float[]> centroids) {
         float minDistance = Float.MAX_VALUE;
         int nearestCluster = 0;
@@ -184,12 +188,6 @@ public class KMeansPlusPlusFloatClusterer {
         return nearestCluster;
     }
 
-    /**
-     * Computes the centroid of a set of points.
-     *
-     * @param points a list of points.
-     * @return the computed centroid.
-     */
     public static float[] centroidOf(List<float[]> points) {
         if (points.isEmpty()) {
             throw new IllegalArgumentException("Can't compute centroid of empty points list");
