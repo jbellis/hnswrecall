@@ -182,20 +182,23 @@ public class PQuantization {
 
     static double distanceBetween(double[] vector1, double[] vector2) {
         var sum = 0.0;
-        if (vector1.length >= DoubleVector.SPECIES_PREFERRED.length()) {
-            for (var i = 0; i < vector1.length; i += DoubleVector.SPECIES_PREFERRED.length()) {
-                var a = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector1, i);
-                var b = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector2, i);
-                var diff = a.sub(b);
-                var square = diff.mul(diff);
-                sum += square.reduceLanes(VectorOperators.ADD);
-            }
+        int vectorizedLength = (vector1.length / DoubleVector.SPECIES_PREFERRED.length()) * DoubleVector.SPECIES_PREFERRED.length();
+
+        // Process the vectorized part
+        for (var i = 0; i < vectorizedLength; i += DoubleVector.SPECIES_PREFERRED.length()) {
+            var a = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector1, i);
+            var b = DoubleVector.fromArray(DoubleVector.SPECIES_PREFERRED, vector2, i);
+            var diff = a.sub(b);
+            var square = diff.mul(diff);
+            sum += square.reduceLanes(VectorOperators.ADD);
         }
-        // tail
-        for (var i = vector1.length - vector1.length % DoubleVector.SPECIES_PREFERRED.length(); i < vector1.length; i++) {
+
+        // Process the tail
+        for (var i = vectorizedLength; i < vector1.length; i++) {
             var diff = vector1[i] - vector2[i];
             sum += diff * diff;
         }
+
         return Math.sqrt(sum);
     }
 

@@ -8,6 +8,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
+import static org.example.PQuantization.distanceBetween;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class PQuantizationTest {
@@ -89,9 +90,9 @@ public class PQuantizationTest {
         double[] vector2 = new double[]{3.0, 4.0};
         double[] vector3 = new double[]{5.0, 1.0};
 
-        assertEquals(0, PQuantization.distanceBetween(vector1, vector1), EPSILON);
-        assertEquals(Math.sqrt(8), PQuantization.distanceBetween(vector1, vector2), EPSILON);
-        assertEquals(Math.sqrt(17), PQuantization.distanceBetween(vector1, vector3), EPSILON);
+        assertEquals(0, distanceBetween(vector1, vector1), EPSILON);
+        assertEquals(Math.sqrt(8), distanceBetween(vector1, vector2), EPSILON);
+        assertEquals(Math.sqrt(17), distanceBetween(vector1, vector3), EPSILON);
     }
 
     @Test
@@ -150,5 +151,41 @@ public class PQuantizationTest {
 
         // Print results for manual inspection
         PQuantization.printCodebooks(result);
+    }
+
+    @Test
+    public void testSameLengthVectors() {
+        double[] v1 = {1.0, 2.0, 3.0, 4.0};
+        double[] v2 = {2.0, 3.0, 4.0, 5.0};
+        double expected = Math.sqrt(4.0);
+        double result = distanceBetween(v1, v2);
+        assertEquals(expected, result, 1e-9);
+    }
+
+    @Test
+    public void testVectorLengthNotDivisibleBySpeciesPreferred() {
+        double[] v1 = {1.0, 2.0, 3.0, 4.0, 5.0};
+        double[] v2 = {2.0, 3.0, 4.0, 5.0, 6.0};
+        double expected = Math.sqrt(5.0);
+        double result = distanceBetween(v1, v2);
+        assertEquals(expected, result, 1e-9);
+    }
+
+    @Test
+    public void testEdgeCaseEmptyVectors() {
+        double[] v1 = {};
+        double[] v2 = {};
+        double expected = 0.0;
+        double result = distanceBetween(v1, v2);
+        assertEquals(expected, result, 1e-9);
+    }
+
+    @Test
+    public void testEdgeCaseSingleElementVectors() {
+        double[] v1 = {1.0};
+        double[] v2 = {2.0};
+        double expected = 1.0;
+        double result = distanceBetween(v1, v2);
+        assertEquals(expected, result, 1e-9);
     }
 }
