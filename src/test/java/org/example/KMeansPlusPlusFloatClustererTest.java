@@ -37,10 +37,6 @@ public class KMeansPlusPlusFloatClustererTest {
                     (a, b) -> euclideanDistance(a, b));
             clusterer.cluster(points);
         });
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(2, 10,
-                (a, b) -> euclideanDistance(a, b));
-
-        clusterer.cluster(points);
     }
 
     @Test

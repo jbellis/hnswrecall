@@ -13,6 +13,9 @@ public class KMeansPlusPlusFloatClusterer {
     private final Random random;
 
     public KMeansPlusPlusFloatClusterer(int k, int maxIterations, BiFunction<float[], float[], Double> distanceFunction) {
+        if (k <= 0) {
+            throw new IllegalArgumentException("Number of clusters must be positive.");
+        }
         this.k = k;
         this.maxIterations = maxIterations;
         this.distanceFunction = distanceFunction;
@@ -20,14 +23,24 @@ public class KMeansPlusPlusFloatClusterer {
     }
 
     public List<float[]> cluster(List<float[]> points) {
+        if (k > points.size()) {
+            throw new IllegalArgumentException("Number of clusters cannot exceed number of points.");
+        }
+
         List<float[]> centroids = chooseInitialCentroids(points);
         int[] assignments = new int[points.size()];
         assignPointsToClusters(centroids, points, assignments);
 
         for (int i = 0; i < maxIterations; i++) {
             List<float[]> newCentroids = new ArrayList<>();
-            for (float[] centroid : centroids) {
-                newCentroids.add(computeCentroid(getPointsForCluster(centroid, points, assignments)));
+            for (int j = 0; j < centroids.size(); j++) {
+                List<float[]> clusterPoints = getPointsForCluster(j, points, assignments);
+                if (clusterPoints.isEmpty()) {
+                    // Handle empty cluster by re-initializing the centroid
+                    newCentroids.add(getNextCentroid(centroids, points));
+                } else {
+                    newCentroids.add(computeCentroid(clusterPoints));
+                }
             }
             reassignPointsToClusters(newCentroids, points, assignments);
             centroids = newCentroids;
@@ -40,12 +53,34 @@ public class KMeansPlusPlusFloatClusterer {
         List<float[]> centroids = new ArrayList<>();
         centroids.add(points.get(random.nextInt(points.size())));
 
-        while (centroids.size() < k) {
-            float[] farthest = getFarthestPoint(centroids, points);
-            centroids.add(farthest);
+        for (int i = 1; i < k; i++) {
+            float[] nextCentroid = getNextCentroid(centroids, points);
+            centroids.add(nextCentroid);
         }
 
         return centroids;
+    }
+
+    private float[] getNextCentroid(List<float[]> centroids, List<float[]> points) {
+        double[] distances = new double[points.size()];
+        double total = 0;
+
+        for (int i = 0; i < points.size(); i++) {
+            distances[i] = minDistanceToCentroid(points.get(i), centroids);
+            total += distances[i];
+        }
+
+        double r = random.nextDouble() * total;
+
+        for (int i = 0; i < distances.length; i++) {
+            r -= distances[i];
+            if (r <= 0) {
+                return points.get(i);
+            }
+        }
+
+        // Throw if we couldn't find a centroid
+        throw new IllegalStateException("Failed to select a centroid using the weighted distribution");
     }
 
     private void assignPointsToClusters(List<float[]> centroids, List<float[]> points, int[] assignments) {
@@ -76,19 +111,6 @@ public class KMeansPlusPlusFloatClusterer {
         return nearestCluster;
     }
 
-    private float[] getFarthestPoint(List<float[]> centroids, List<float[]> points) {
-        double maxDistance = Double.NEGATIVE_INFINITY;
-        float[] farthest = null;
-        for (float[] point : points) {
-            double distance = minDistanceToCentroid(point, centroids);
-            if (distance > maxDistance) {
-                maxDistance = distance;
-                farthest = point;
-            }
-        }
-        return farthest;
-    }
-
     private double minDistanceToCentroid(float[] point, List<float[]> centroids) {
         double minDistance = Double.MAX_VALUE;
         for (float[] centroid : centroids) {
@@ -100,24 +122,14 @@ public class KMeansPlusPlusFloatClusterer {
         return minDistance;
     }
 
-    private List<float[]> getPointsForCluster(float[] centroid, List<float[]> points, int[] assignments) {
+    private List<float[]> getPointsForCluster(int centroidIndex, List<float[]> points, int[] assignments) {
         List<float[]> clusterPoints = new ArrayList<>();
         for (int i = 0; i < points.size(); i++) {
-            if (assignments[i] == getCentroidIndex(centroid, assignments)) {
+            if (assignments[i] == centroidIndex) {
                 clusterPoints.add(points.get(i));
             }
         }
         return clusterPoints;
-    }
-
-    private int getCentroidIndex(float[] centroid, int[] assignments) {
-        for (int i = 0; i < assignments.length; i++) {
-            if (assignments[i] == -1) {
-                assignments[i] = i;
-                return i;
-            }
-        }
-        return -1;
     }
 
     private float[] computeCentroid(List<float[]> points) {
