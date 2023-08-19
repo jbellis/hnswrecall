@@ -31,7 +31,7 @@ public class PQuantizationTest {
         PQuantization.printCodebooks(result);
 
         // quantize the vectors
-        var quantized = new PQuantization(testVectors, M, K).quantizeAll(testVectors);
+        var quantized = new PQuantization(testVectors, M, K).encodeAll(testVectors);
         System.out.printf("Quantized: %s%n", quantized.stream().map(Arrays::toString).toList());
     }
 

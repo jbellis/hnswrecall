@@ -92,7 +92,7 @@ public class Bench {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
                 // quantizing takes about 40% of performQueries runtime!
-                var quantizedQuery = pq.quantize(queryVector);
+                var quantizedQuery = pq.encode(queryVector);
                 NeighborQueue nn;
                 try {
                     nn = HnswGraphSearcher.search(quantizedQuery, efSearch, ravv, VectorEncoding.BYTE, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
@@ -247,7 +247,7 @@ public class Bench {
         System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
         start = System.nanoTime();
-        var quantizedVectors = new ListRandomAccessVectorValues<>(pq.quantizeAll(ds.baseVectors), pqDims);
+        var quantizedVectors = new ListRandomAccessVectorValues<>(pq.encodeAll(ds.baseVectors), pqDims);
         System.out.format("PQ encode %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
         for (int M : mGrid) {

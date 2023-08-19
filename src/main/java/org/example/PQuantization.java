@@ -142,8 +142,8 @@ public class PQuantization {
         return Math.sqrt(sum);
     }
 
-    public List<byte[]> quantizeAll(List<float[]> vectors) {
-        return vectors.stream().parallel().map(this::quantize).toList();
+    public List<byte[]> encodeAll(List<float[]> vectors) {
+        return vectors.stream().parallel().map(this::encode).toList();
     }
 
     /**
@@ -151,7 +151,7 @@ public class PQuantization {
      *
      * @return The quantized value represented as an integer.
      */
-    public byte[] quantize(float[] vector) {
+    public byte[] encode(float[] vector) {
         float[] centered = subFrom(vector, centroid);
         int subvectorSize = centered.length / M;
         List<Integer> indices = IntStream.range(0, M)
