@@ -26,6 +26,7 @@ public class PQUtil {
     }
 
     static List<List<CentroidCluster<DoublePoint>>> createCodebooks(List<float[]> vectors, int M, int K) {
+        // split vectors into M subvectors
         int subvectorSize = vectors.get(0).length / M;
         return IntStream.range(0, M).parallel()
                 .mapToObj(m -> {
@@ -48,6 +49,21 @@ public class PQUtil {
                     return L;
                 })
                 .toList();
+    }
+
+    static float[] subFrom(float[] v, double[] centroid) {
+        // TODO use vectorized operations
+        float[] centered = new float[v.length];
+        for (int i = 0; i < v.length; i++) {
+            centered[i] = v[i] - (float) centroid[i];
+        }
+        return centered;
+    }
+
+    static double[] centroidOf(List<float[]> vectors) {
+        return IntStream.range(0, vectors.get(0).length).mapToDouble(i -> {
+            return vectors.stream().parallel().mapToDouble(v -> v[i]).sum() / vectors.size();
+        }).toArray();
     }
 
     static int closetCentroidIndex(double[] subvector, List<CentroidCluster<DoublePoint>> codebook) {

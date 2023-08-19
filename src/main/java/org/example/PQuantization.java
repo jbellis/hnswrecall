@@ -6,9 +6,13 @@ import org.apache.commons.math3.ml.clustering.DoublePoint;
 import java.util.List;
 import java.util.stream.IntStream;
 
+import static org.example.PQUtil.createCodebooks;
+import static org.example.PQUtil.subFrom;
+
 public class PQuantization {
     private final List<List<CentroidCluster<DoublePoint>>> codebooks;
     private final int M;
+    private final double[] centroid;
 
     /**
      * Constructor for PQQuantization. Initializes the codebooks by clustering
@@ -21,7 +25,10 @@ public class PQuantization {
         this.M = M;
         int dimensions = vectors.get(0).length;
         assert dimensions % M == 0 : "The number of dimensions must be divisible by " + M;
-        codebooks = PQUtil.createCodebooks(vectors, M, K);
+        centroid = PQUtil.centroidOf(vectors);
+        // subtract the centroid from each vector
+        var centeredVectors = vectors.stream().parallel().map(v -> subFrom(v, centroid)).toList();
+        codebooks = createCodebooks(centeredVectors, M, K);
     }
 
     public List<byte[]> quantizeAll(List<float[]> vectors) {
@@ -34,11 +41,12 @@ public class PQuantization {
      * @return The quantized value represented as an integer.
      */
     public byte[] quantize(float[] vector) {
-        int subvectorSize = vector.length / M;
+        float[] centered = subFrom(vector, centroid);
+        int subvectorSize = centered.length / M;
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return PQUtil.closetCentroidIndex(PQUtil.getSubVector(vector, m, subvectorSize), codebooks.get(m));
+                    return PQUtil.closetCentroidIndex(PQUtil.getSubVector(centered, m, subvectorSize), codebooks.get(m));
                 })
                 .toList();
 
