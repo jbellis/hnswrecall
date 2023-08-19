@@ -23,28 +23,29 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
-    private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds)
+    private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds, PQuantization pq, ListRandomAccessVectorValues<byte[]> quantizedVectors)
             throws ExecutionException, InterruptedException
     {
-        var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
+        var floatVectors = new ListRandomAccessVectorValues<>(ds.baseVectors, ds.baseVectors.get(0).length);
         var topK = ds.groundTruth.get(0).size();
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
+        var builder = new ConcurrentHnswGraphBuilder<>(floatVectors, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
-        var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
+        var hnsw = builder.buildAsync(floatVectors.copy(), es, buildThreads).get();
         es.shutdown();
-        long buildNanos = System.nanoTime() - start;
+        System.out.format("HNSW M=%d ef=%d build in %.2fs,%n",
+                M, efConstruction, (System.nanoTime() - start) / 1_000_000_000.0);
 
         int queryRuns = 10;
         for (int overquery : efSearchOptions) {
             start = System.nanoTime();
-            var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
+            var pqr = performQueries(ds, pq, quantizedVectors, hnsw::getView, topK, topK * overquery, queryRuns);
             var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-            System.out.format("HNSW   M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                    M, efConstruction, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
+            System.out.format("HNSW top %d/%d recall %.4f, query %.2fs. %s nodes visited%n",
+                    topK, overquery, recall, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
         }
     }
 
@@ -76,16 +77,24 @@ public class Bench {
         return topKCorrect(topK, a, gt);
     }
 
-    private static ResultSummary performQueries(DataSet ds, ListRandomAccessVectorValues ravv, Supplier<HnswGraph> graphSupplier, int topK, int efSearch, int queryRuns) {
+    private static ResultSummary performQueries(DataSet ds,
+                                                PQuantization pq,
+                                                ListRandomAccessVectorValues<byte[]> ravv,
+                                                Supplier<HnswGraph> graphSupplier,
+                                                int topK,
+                                                int efSearch,
+                                                int queryRuns)
+    {
         assert efSearch >= topK;
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
+                var quantizedQuery = pq.quantize(queryVector);
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(queryVector, efSearch, ravv, VectorEncoding.FLOAT32, ds.similarityFunction, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    nn = HnswGraphSearcher.search(quantizedQuery, efSearch, ravv, VectorEncoding.BYTE, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -212,9 +221,16 @@ public class Bench {
 
     private static void gridSearch(String f, List<Integer> mGrid, List<Integer> efConstructionGrid, List<Integer> efSearchFactor) throws ExecutionException, InterruptedException {
         var ds = load(f);
+        var start = System.nanoTime();
+        PQuantization pq = new PQuantization(ds.baseVectors);
+        System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
+        start = System.nanoTime();
+        var quantizedVectors = new ListRandomAccessVectorValues<>(pq.quantizeAll(ds.baseVectors), 4);
+        System.out.format("PQ encode %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
+
         for (int M : mGrid) {
             for (int beamWidth : efConstructionGrid) {
-                testRecall(M, beamWidth, efSearchFactor, ds);
+                testRecall(M, beamWidth, efSearchFactor, ds, pq, quantizedVectors);
             }
         }
     }
