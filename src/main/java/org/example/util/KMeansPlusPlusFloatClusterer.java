@@ -16,6 +16,8 @@ public class KMeansPlusPlusFloatClusterer {
     private final BiFunction<float[], float[], Float> distanceFunction;
     private final Random random;
     private final List<List<float[]>> clusterPoints;
+    private final float[][] centroidDistances;
+
 
     /**
      * Constructs a KMeansPlusPlusFloatClusterer with the specified number of clusters,
@@ -37,6 +39,7 @@ public class KMeansPlusPlusFloatClusterer {
         for (int i = 0; i < k; i++) {
             this.clusterPoints.add(new ArrayList<>());
         }
+        centroidDistances = new float[k][k];
     }
 
     /**
@@ -66,6 +69,14 @@ public class KMeansPlusPlusFloatClusterer {
             }
             assignPointsToClusters(newCentroids, points, assignments);
             centroids = newCentroids;
+            // update centroid distances
+            for (int m = 0; m < centroids.size(); m++) {
+                for (int n = m + 1; n < centroids.size(); n++) {
+                    float distance = distanceFunction.apply(centroids.get(m), centroids.get(n));
+                    centroidDistances[m][n] = distance;
+                    centroidDistances[n][m] = distance; // Distance matrix is symmetric
+                }
+            }
         }
 
         return centroids;
@@ -91,7 +102,10 @@ public class KMeansPlusPlusFloatClusterer {
         // Choose the first centroid randomly
         float[] firstCentroid = points.get(random.nextInt(points.size()));
         centroids.add(firstCentroid);
-        updateDistances(firstCentroid, points, distances);
+        for (int i = 0; i < points.size(); i++) {
+            float distance1 = distanceFunction.apply(points.get(i), firstCentroid);
+            distances[i] = Math.min(distances[i], distance1);
+        }
 
         // For each subsequent centroid
         for (int i = 1; i < k; i++) {
@@ -128,20 +142,6 @@ public class KMeansPlusPlusFloatClusterer {
     }
 
     /**
-     * Updates the distances of points to the closest centroid.
-     *
-     * @param centroid the centroid to compute distances.
-     * @param points a list of points.
-     * @param distances an array to store the computed distances.
-     */
-    private void updateDistances(float[] centroid, List<float[]> points, float[] distances) {
-        for (int i = 0; i < points.size(); i++) {
-            float distance = distanceFunction.apply(points.get(i), centroid);
-            distances[i] = Math.min(distances[i], distance);
-        }
-    }
-
-    /**
      * Assigns points to the nearest cluster.
      *
      * @param centroids a list of centroids.
@@ -161,24 +161,26 @@ public class KMeansPlusPlusFloatClusterer {
         }
     }
 
-    /**
-     * Determines the nearest cluster for a given point.
-     *
-     * @param point the point to be assigned.
-     * @param centroids a list of centroids.
-     * @return the index of the nearest cluster.
-     */
     private int getNearestCluster(float[] point, List<float[]> centroids) {
         float minDistance = Float.MAX_VALUE;
         int nearestCluster = 0;
+
         for (int i = 0; i < centroids.size(); i++) {
-            float[] centroid = centroids.get(i);
-            float distance = distanceFunction.apply(point, centroid);
+            if (i != nearestCluster) {
+                // Using triangle inequality to potentially skip the computation
+                float potentialMinDistance = Math.abs(minDistance - centroidDistances[nearestCluster][i]);
+                if (potentialMinDistance >= minDistance) {
+                    continue;
+                }
+            }
+
+            float distance = distanceFunction.apply(point, centroids.get(i));
             if (distance < minDistance) {
                 minDistance = distance;
                 nearestCluster = i;
             }
         }
+
         return nearestCluster;
     }
 
