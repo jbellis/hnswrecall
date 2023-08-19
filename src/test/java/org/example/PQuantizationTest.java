@@ -27,8 +27,8 @@ public class PQuantizationTest {
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        List<List<CentroidCluster<DoublePoint>>> result = PQUtil.createCodebooks(testVectors, M, K);
-        PQUtil.printCodebooks(result);
+        List<List<CentroidCluster<DoublePoint>>> result = PQuantization.createCodebooks(testVectors, M, K);
+        PQuantization.printCodebooks(result);
 
         // quantize the vectors
         var quantized = new PQuantization(testVectors, M, K).quantizeAll(testVectors);
@@ -46,7 +46,7 @@ public class PQuantizationTest {
 
         // The closest centroid to [6.0, 7.0] is [5.0, 6.0], which is at index 1.
         double[] subvector = {6.0, 7.0};
-        int closestIndex = PQUtil.closetCentroidIndex(subvector, codebook);
+        int closestIndex = PQuantization.closetCentroidIndex(subvector, codebook);
         assertEquals(1, closestIndex);
     }
 
@@ -68,7 +68,7 @@ public class PQuantizationTest {
         List<Integer> indices = IntStream.range(0, 4)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return PQUtil.closetCentroidIndex(PQUtil.getSubVector(vector, m, 1), codebooks.get(m));
+                    return PQuantization.closetCentroidIndex(PQuantization.getSubVector(vector, m, 1), codebooks.get(m));
                 })
                 .toList();
         assertEquals(List.of(0, 0, 0, 1), indices);
@@ -77,8 +77,8 @@ public class PQuantizationTest {
     @Test
     public void testGetSubVector() {
         float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f};
-        assertArrayEquals(new double[]{9.0f, 10.0f}, PQUtil.getSubVector(vector, 0, 2), EPSILON);
-        assertArrayEquals(new double[]{11.0, 12.0}, PQUtil.getSubVector(vector, 1, 2), EPSILON);
+        assertArrayEquals(new double[]{9.0f, 10.0f}, PQuantization.getSubVector(vector, 0, 2), EPSILON);
+        assertArrayEquals(new double[]{11.0, 12.0}, PQuantization.getSubVector(vector, 1, 2), EPSILON);
     }
 
     @Test
@@ -87,9 +87,9 @@ public class PQuantizationTest {
         double[] vector2 = new double[]{3.0, 4.0};
         double[] vector3 = new double[]{5.0, 1.0};
 
-        assertEquals(0, PQUtil.distanceBetween(vector1, vector1), EPSILON);
-        assertEquals(Math.sqrt(8), PQUtil.distanceBetween(vector1, vector2), EPSILON);
-        assertEquals(Math.sqrt(17), PQUtil.distanceBetween(vector1, vector3), EPSILON);
+        assertEquals(0, PQuantization.distanceBetween(vector1, vector1), EPSILON);
+        assertEquals(Math.sqrt(8), PQuantization.distanceBetween(vector1, vector2), EPSILON);
+        assertEquals(Math.sqrt(17), PQuantization.distanceBetween(vector1, vector3), EPSILON);
     }
 
     @Test
@@ -111,7 +111,7 @@ public class PQuantizationTest {
         );
 
         for (int i = 0; i < testCases.size(); i++) {
-            byte[] result = PQUtil.toBytes(testCases.get(i), 4);
+            byte[] result = PQuantization.toBytes(testCases.get(i), 4);
             byte[] expected = expectedResults.get(i);
             if (Arrays.equals(result, expected)) {
                 System.out.println("Test case " + (i + 1) + " passed!");
