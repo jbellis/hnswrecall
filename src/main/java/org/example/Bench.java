@@ -100,12 +100,21 @@ public class Bench {
                 }
 
                 // re-rank the quantized results by the original similarity function
-                Integer[] raw = new Integer[nn.size()];
+                // Decorate
+                int[] raw = new int[nn.size()];
                 for (int j = raw.length - 1; j >= 0; j--) {
                     raw[j] = nn.pop();
                 }
-                Arrays.sort(raw, Comparator.comparingDouble((Integer j) -> ds.similarityFunction.compare(queryVector, ds.baseVectors.get(j))).reversed());
-                int[] a = Arrays.stream(raw).mapToInt(Integer::intValue).toArray();
+                // Pair each item in `raw` with its computed similarity
+                Map.Entry<Integer, Double>[] decorated = new AbstractMap.SimpleEntry[raw.length];
+                for (int j = 0; j < raw.length; j++) {
+                    double similarity = ds.similarityFunction.compare(queryVector, ds.baseVectors.get(raw[j]));
+                    decorated[j] = new AbstractMap.SimpleEntry<>(raw[j], similarity);
+                }
+                // Sort based on the computed similarity
+                Arrays.sort(decorated, (p1, p2) -> Double.compare(p2.getValue(), p1.getValue())); // Note the order for reversed sort
+                // Undecorate
+                int[] a = Arrays.stream(decorated).mapToInt(Map.Entry::getKey).toArray();
 
                 var gt = ds.groundTruth.get(i);
                 var n = topKCorrect(topK, a, gt);
@@ -211,7 +220,7 @@ public class Bench {
                 "hdf5/sift-128-euclidean.hdf5");
         var mGrid = List.of(16); // 8, 12, 16, 24, 32, 48, 64);
         var efConstructionGrid = List.of(100); // 60, 80, 100, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 4, 8, 16);
+        var efSearchFactor = List.of(1, 4, 8);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
@@ -232,7 +241,7 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = 32;
+        var pqDims = 64;
         PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
         System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
