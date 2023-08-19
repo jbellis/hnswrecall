@@ -248,7 +248,7 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = 32;
+        var pqDims = ds.baseVectors.get(0).length / 4;
         PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
         System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
 
