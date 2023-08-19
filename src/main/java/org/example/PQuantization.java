@@ -36,6 +36,28 @@ public class PQuantization {
         codebooks = createCodebooks(centeredVectors, M, K);
     }
 
+    public List<byte[]> encodeAll(List<float[]> vectors) {
+        return vectors.stream().parallel().map(this::encode).toList();
+    }
+
+    /**
+     * Quantizes the input vector using the generated codebooks.
+     *
+     * @return The quantized value represented as an integer.
+     */
+    public byte[] encode(float[] vector) {
+        float[] centered = subFrom(vector, centroid);
+        int subvectorSize = centered.length / M;
+        List<Integer> indices = IntStream.range(0, M)
+                .mapToObj(m -> {
+                    // find the closest centroid in the corresponding codebook to each subvector
+                    return closetCentroidIndex(getSubVector(centered, m, subvectorSize), codebooks.get(m));
+                })
+                .toList();
+
+        return toBytes(indices, M);
+    }
+
     static void printCodebooks(List<List<CentroidCluster<DoublePoint>>> result) {
         List<List<String>> strings = result.stream().map(L -> L.stream().map(C -> arraySummary(C.getCenter().getPoint())).toList()).toList();
         System.out.printf("Codebooks: [%s]%n", String.join("\n ", strings.stream().map(L -> "[" + String.join(", ", L) + "]").toList()));
@@ -140,27 +162,5 @@ public class PQuantization {
             sum += diff * diff;
         }
         return Math.sqrt(sum);
-    }
-
-    public List<byte[]> encodeAll(List<float[]> vectors) {
-        return vectors.stream().parallel().map(this::encode).toList();
-    }
-
-    /**
-     * Quantizes the input vector using the generated codebooks.
-     *
-     * @return The quantized value represented as an integer.
-     */
-    public byte[] encode(float[] vector) {
-        float[] centered = subFrom(vector, centroid);
-        int subvectorSize = centered.length / M;
-        List<Integer> indices = IntStream.range(0, M)
-                .mapToObj(m -> {
-                    // find the closest centroid in the corresponding codebook to each subvector
-                    return closetCentroidIndex(getSubVector(centered, m, subvectorSize), codebooks.get(m));
-                })
-                .toList();
-
-        return toBytes(indices, M);
     }
 }
