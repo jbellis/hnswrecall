@@ -32,7 +32,7 @@ public class Bench {
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = new ConcurrentHnswGraphBuilder<>(floatVectors, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
+        var builder = new ConcurrentHnswGraphBuilder<>(floatVectors, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f, 1.4f);
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(floatVectors.copy(), es, buildThreads).get();
@@ -40,7 +40,7 @@ public class Bench {
         System.out.format("HNSW M=%d ef=%d build in %.2fs,%n",
                 M, efConstruction, (System.nanoTime() - start) / 1_000_000_000.0);
 
-        int queryRuns = 10;
+        int queryRuns = 2;
         for (int overquery : efSearchOptions) {
             start = System.nanoTime();
             var pqr = performQueries(ds, pqvv, hnsw::getView, topK, topK * overquery, queryRuns);
@@ -221,12 +221,12 @@ public class Bench {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
 
         var files = List.of(
-                "hdf5/sift-128-euclidean.hdf5",
                 "hdf5/nytimes-256-angular.hdf5",
+                "hdf5/sift-128-euclidean.hdf5",
                 "hdf5/glove-100-angular.hdf5",
                 "hdf5/glove-200-angular.hdf5");
-        var mGrid = List.of(16); // 8, 12, 16, 24, 32, 48, 64);
-        var efConstructionGrid = List.of(100); // 60, 80, 100, 120, 160, 200, 400, 600, 800);
+        var mGrid = List.of(16, 24, 32, 48, 64);
+        var efConstructionGrid = List.of(80, 120, 160, 200, 400, 600, 800);
         var efSearchFactor = List.of(1, 2, 4);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
@@ -237,8 +237,8 @@ public class Bench {
 
         // tiny dataset, don't waste time building a huge index
         files = List.of("hdf5/fashion-mnist-784-euclidean.hdf5");
-//        mGrid = List.of(8, 12, 16, 24);
-//        efConstructionGrid = List.of(40, 60, 80, 100, 120, 160);
+        mGrid = List.of(8, 12, 16, 24);
+        efConstructionGrid = List.of(40, 60, 80, 100, 120, 160);
         for (var f : files) {
             gridSearch(f, mGrid, efConstructionGrid, efSearchFactor);
         }
@@ -248,9 +248,9 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = ds.baseVectors.get(0).length / 4;
+        var pqDims = ds.baseVectors.get(0).length / 2;
         PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
-        System.out.format("PQ build %.2fs,%n", (System.nanoTime() - start) / 1_000_000_000.0);
+        System.out.format("PQ@%s build %.2fs,%n", pqDims, (System.nanoTime() - start) / 1_000_000_000.0);
 
         start = System.nanoTime();
         var quantizedVectors = pq.encodeAll(ds.baseVectors);
