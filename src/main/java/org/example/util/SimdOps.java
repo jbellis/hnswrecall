@@ -60,30 +60,6 @@ public class SimdOps {
     }
 
     /**
-     * Multiplies v1 by v2, in place (v1 will be modified)
-     */
-    public static void simdMulInPlace(float[] v1, float[] v2) {
-        if (v1.length != v2.length) {
-            throw new IllegalArgumentException("Vectors must have the same length");
-        }
-
-        int vectorizedLength = (v1.length / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
-
-        // Process the vectorized part
-        for (int i = 0; i < vectorizedLength; i += FloatVector.SPECIES_PREFERRED.length()) {
-            var a = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, v1, i);
-            var b = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, v2, i);
-            var multiplyResult = a.mul(b);
-            multiplyResult.intoArray(v1, i);
-        }
-
-        // Process the tail
-        for (int i = vectorizedLength; i < v1.length; i++) {
-            v1[i] = v1[i] * v2[i];
-        }
-    }
-
-    /**
      * Adds v2 into v1, in place (v1 will be modified)
      */
     public static void simdAddInPlace(float[] v1, float[] v2) {
@@ -129,39 +105,6 @@ public class SimdOps {
         // Process the tail
         for (int i = vectorizedLength; i < lhs.length; i++) {
             result[i] = lhs[i] - rhs[i];
-        }
-
-        return result;
-    }
-
-    public static float[] simdMultiplyMatrix(float[] vector, float[][] matrix) {
-        if (vector.length != matrix[0].length) {
-            throw new IllegalArgumentException("Vector size must match matrix column count");
-        }
-
-        int rows = matrix.length;
-        int cols = matrix[0].length;
-
-        float[] result = new float[rows];
-
-        int vectorizedLength = (cols / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
-
-        for (int i = 0; i < rows; i++) {
-            float sum = 0;
-
-            // Vectorized part
-            for (int j = 0; j < vectorizedLength; j += FloatVector.SPECIES_PREFERRED.length()) {
-                var vecPart = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, vector, j);
-                var matrixPart = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, matrix[i], j);
-                sum += vecPart.mul(matrixPart).reduceLanes(VectorOperators.ADD);
-            }
-
-            // Tail
-            for (int j = vectorizedLength; j < cols; j++) {
-                sum += vector[j] * matrix[i][j];
-            }
-
-            result[i] = sum;
         }
 
         return result;
