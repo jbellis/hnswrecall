@@ -20,6 +20,8 @@ import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static java.lang.ThreadLocal.withInitial;
+
 /**
  * Tests HNSW against vectors from the Texmex dataset
  */
@@ -88,12 +90,14 @@ public class Bench {
         assert efSearch >= topK;
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
+        var vvSupplier = ThreadLocal.withInitial(pqvv::copy);
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
+                var vv = vvSupplier.get();
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(queryVector, efSearch, pqvv, VectorEncoding.FLOAT32, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    nn = HnswGraphSearcher.search(queryVector, efSearch, vv, VectorEncoding.FLOAT32, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }

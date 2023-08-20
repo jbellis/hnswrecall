@@ -60,22 +60,19 @@ public class PQuantization {
      *
      * @return The approximate original vector.
      */
-    public float[] decode(byte[] encoded) {
-        float[] reconstructed = new float[centroid.length]; // The reconstructed vector should have the same length as the original vector.
-
-        int offset = 0; // starting position in the reconstructed array for the current subvector
+    public float[] decode(byte[] encoded, float[] target) {
+        int offset = 0; // starting position in the target array for the current subvector
         for (int m = 0; m < M; m++) {
             // convert encodex[m] to unsigned index
             int centroidIndex = Byte.toUnsignedInt(encoded[m]);
             float[] centroidSubvector = codebooks.get(m).get(centroidIndex);
-            System.arraycopy(centroidSubvector, 0, reconstructed, offset, subvectorSizes[m]);
+            System.arraycopy(centroidSubvector, 0, target, offset, subvectorSizes[m]);
             offset += subvectorSizes[m]; // move to the next subvector's starting position
         }
 
         // Add back the global centroid to get the approximate original vector.
-        simdAddInPlace(reconstructed, centroid);
-
-        return reconstructed;
+        simdAddInPlace(target, centroid);
+        return target;
     }
 
     public int getDimensions() {

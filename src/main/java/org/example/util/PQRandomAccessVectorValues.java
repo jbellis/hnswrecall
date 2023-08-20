@@ -11,10 +11,12 @@ import java.util.List;
 public class PQRandomAccessVectorValues implements RandomAccessVectorValues<float[]> {
     private final List<byte[]> encoded;
     private final PQuantization pq;
+    private final float[] vector;
 
     public PQRandomAccessVectorValues(List<byte[]> vectors, PQuantization pq) {
         this.encoded = vectors;
         this.pq = pq;
+        this.vector = new float[pq.getDimensions()];
     }
 
     @Override
@@ -29,14 +31,12 @@ public class PQRandomAccessVectorValues implements RandomAccessVectorValues<floa
 
     @Override
     public float[] vectorValue(int targetOrd) {
-        return pq.decode(encoded.get(targetOrd));
+        pq.decode(encoded.get(targetOrd), vector);
+        return vector;
     }
 
     @Override
     public PQRandomAccessVectorValues copy() {
-        // the copy method is called as a workaround for Lucene's implementations not being re-entrant.
-        // if you are already re-entrant, you really don't need a new copy, but HGBuilder.build
-        // explicitly checks for object identity so we'll do a shallow copy to make it happy.
         return new PQRandomAccessVectorValues(encoded, pq);
     }
 }
