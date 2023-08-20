@@ -227,7 +227,7 @@ public class Bench {
                 "hdf5/glove-200-angular.hdf5");
         var mGrid = List.of(16, 24, 32, 48, 64);
         var efConstructionGrid = List.of(80, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 2, 4);
+        var efSearchFactor = List.of(1, 2);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
