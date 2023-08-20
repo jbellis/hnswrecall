@@ -65,8 +65,8 @@ public class PQuantization {
 
         int offset = 0; // starting position in the reconstructed array for the current subvector
         for (int m = 0; m < M; m++) {
-            byte byteValue = encoded[m];
-            int centroidIndex = byteValue + 128; // reverse the operation done in toBytes()
+            // convert encodex[m] to unsigned index
+            int centroidIndex = Byte.toUnsignedInt(encoded[m]);
             float[] centroidSubvector = codebooks.get(m).get(centroidIndex);
             System.arraycopy(centroidSubvector, 0, reconstructed, offset, subvectorSizes[m]);
             offset += subvectorSizes[m]; // move to the next subvector's starting position
@@ -132,9 +132,7 @@ public class PQuantization {
     static byte[] toBytes(List<Integer> indices, int M) {
         byte[] q = new byte[M];
         for (int m = 0; m < M; m++) {
-            int centroidIndex = indices.get(m);
-            byte byteValue = (byte) (centroidIndex - 128);
-            q[m] = byteValue;
+            q[m] = (byte) (int) indices.get(m);
         }
         return q;
     }
