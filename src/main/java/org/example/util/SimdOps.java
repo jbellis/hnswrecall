@@ -40,6 +40,9 @@ public class SimdOps {
         return sum;
     }
 
+    /**
+     * Divide v1 by v2, in place (v1 will be modified)
+     */
     static void simdDivInPlace(float[] vector, float divisor) {
         int vectorizedLength = (vector.length / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
 
@@ -56,6 +59,9 @@ public class SimdOps {
         }
     }
 
+    /**
+     * Adds v2 into v1, in place (v1 will be modified)
+     */
     public static void simdAddInPlace(float[] v1, float[] v2) {
         if (v1.length != v2.length) {
             throw new IllegalArgumentException("Vectors must have the same length");

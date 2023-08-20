@@ -13,7 +13,7 @@ import static org.example.util.SimdOps.simdSub;
 public class PQuantization {
     private final List<List<float[]>> codebooks;
     private final int M;
-    private final float[] centroid;
+    private final float[] globalCentroid;
     private final int[] subvectorSizes; // added member variable
 
     /**
@@ -25,10 +25,10 @@ public class PQuantization {
      */
     public PQuantization(List<float[]> vectors, int M, int K) {
         this.M = M;
-        centroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
+        globalCentroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
         subvectorSizes = getSubvectorSizes(vectors.get(0).length, M);
         // subtract the centroid from each vector
-        var centeredVectors = vectors.stream().parallel().map(v -> simdSub(v, centroid)).toList();
+        var centeredVectors = vectors.stream().parallel().map(v -> simdSub(v, globalCentroid)).toList();
         // TODO compute optimal rotation as well
         codebooks = createCodebooks(centeredVectors, M, K, subvectorSizes);
     }
@@ -43,7 +43,7 @@ public class PQuantization {
      * @return The quantized value represented as an integer.
      */
     public byte[] encode(float[] vector) {
-        float[] centered = simdSub(vector, centroid);
+        float[] centered = simdSub(vector, globalCentroid);
 
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
@@ -63,20 +63,19 @@ public class PQuantization {
     public float[] decode(byte[] encoded, float[] target) {
         int offset = 0; // starting position in the target array for the current subvector
         for (int m = 0; m < M; m++) {
-            // convert encodex[m] to unsigned index
             int centroidIndex = Byte.toUnsignedInt(encoded[m]);
             float[] centroidSubvector = codebooks.get(m).get(centroidIndex);
             System.arraycopy(centroidSubvector, 0, target, offset, subvectorSizes[m]);
-            offset += subvectorSizes[m]; // move to the next subvector's starting position
+            offset += subvectorSizes[m];
         }
 
         // Add back the global centroid to get the approximate original vector.
-        simdAddInPlace(target, centroid);
+        simdAddInPlace(target, globalCentroid);
         return target;
     }
 
     public int getDimensions() {
-        return centroid.length;
+        return globalCentroid.length;
     }
 
     static void printCodebooks(List<List<float[]>> codebooks) {
