@@ -2,18 +2,20 @@ package org.example;
 
 import org.apache.lucene.util.VectorUtil;
 import org.example.util.KMeansPlusPlusFloatClusterer;
+import org.example.util.PCA;
 
 import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.example.util.SimdOps.simdAddInPlace;
-import static org.example.util.SimdOps.simdSub;
+import static org.example.util.SimdOps.*;
 
 public class PQuantization {
     private final List<List<float[]>> codebooks;
     private final int M;
     private final float[] globalCentroid;
+    private final float[][] rotationMatrix;
+    private final float[][] transposedRotationMatrix;
     private final int[] subvectorSizes; // added member variable
 
     /**
@@ -29,8 +31,10 @@ public class PQuantization {
         subvectorSizes = getSubvectorSizes(vectors.get(0).length, M);
         // subtract the centroid from each vector
         var centeredVectors = vectors.stream().parallel().map(v -> simdSub(v, globalCentroid)).toList();
-        // TODO compute optimal rotation as well
-        codebooks = createCodebooks(centeredVectors, M, K, subvectorSizes);
+        rotationMatrix = PCA.computePCARotation(centeredVectors);
+        transposedRotationMatrix = PCA.transpose(rotationMatrix);
+        var rotatedVectors = centeredVectors.stream().parallel().map(v -> simdMultiplyMatrix(v, rotationMatrix)).toList();
+        codebooks = createCodebooks(rotatedVectors, M, K, subvectorSizes);
     }
 
     public List<byte[]> encodeAll(List<float[]> vectors) {
@@ -44,11 +48,12 @@ public class PQuantization {
      */
     public byte[] encode(float[] vector) {
         float[] centered = simdSub(vector, globalCentroid);
+        float[] rotated = simdMultiplyMatrix(centered, rotationMatrix);
 
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return closetCentroidIndex(getSubVector(centered, m, subvectorSizes), codebooks.get(m));
+                    return closetCentroidIndex(getSubVector(rotated, m, subvectorSizes), codebooks.get(m));
                 })
                 .toList();
 
@@ -69,9 +74,10 @@ public class PQuantization {
             offset += subvectorSizes[m];
         }
 
-        // Add back the global centroid to get the approximate original vector.
-        simdAddInPlace(target, globalCentroid);
-        return target;
+        // Invert the rotation and centering to get the approximate original vector.
+        var unrotated = simdMultiplyMatrix(target, transposedRotationMatrix);
+        simdAddInPlace(unrotated, globalCentroid);
+        return unrotated;
     }
 
     public int getDimensions() {
@@ -107,7 +113,7 @@ public class PQuantization {
                     List<float[]> subvectors = vectors.stream().parallel()
                             .map(vector -> getSubVector(vector, m, subvectorSizes))
                             .toList();
-                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, (vector1, vector2) -> VectorUtil.squareDistance(vector1, vector2));
+                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, VectorUtil::squareDistance);
                     return clusterer.cluster(subvectors);
                 })
                 .toList();
