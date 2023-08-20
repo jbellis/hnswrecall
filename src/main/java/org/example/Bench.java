@@ -5,7 +5,10 @@ import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.VectorUtil;
-import org.apache.lucene.util.hnsw.*;
+import org.apache.lucene.util.hnsw.ConcurrentHnswGraphBuilder;
+import org.apache.lucene.util.hnsw.HnswGraph;
+import org.apache.lucene.util.hnsw.HnswGraphSearcher;
+import org.apache.lucene.util.hnsw.NeighborQueue;
 import org.example.util.ListRandomAccessVectorValues;
 import org.example.util.PQRandomAccessVectorValues;
 
@@ -19,8 +22,6 @@ import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
-import static java.lang.ThreadLocal.withInitial;
 
 /**
  * Tests HNSW against vectors from the Texmex dataset
@@ -252,8 +253,8 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = ds.baseVectors.get(0).length / 2;
-        PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256);
+        var pqDims = ds.baseVectors.get(0).length / 4;
+        PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256, ds.similarityFunction == VectorSimilarityFunction.EUCLIDEAN);
         System.out.format("PQ@%s build %.2fs,%n", pqDims, (System.nanoTime() - start) / 1_000_000_000.0);
 
         start = System.nanoTime();

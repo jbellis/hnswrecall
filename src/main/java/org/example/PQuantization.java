@@ -13,6 +13,7 @@ import static org.example.util.SimdOps.simdSub;
 public class PQuantization {
     private final List<List<float[]>> codebooks;
     private final int M;
+    private final int originalDimension;
     private final float[] globalCentroid;
     private final int[] subvectorSizes; // added member variable
 
@@ -23,14 +24,19 @@ public class PQuantization {
      * M = number of subspaces
      * K = number of clusters per subspace
      */
-    public PQuantization(List<float[]> vectors, int M, int K) {
+    public PQuantization(List<float[]> vectors, int M, int K, boolean globallyCenter) {
         this.M = M;
-        globalCentroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
-        subvectorSizes = getSubvectorSizes(vectors.get(0).length, M);
-        // subtract the centroid from each vector
-        var centeredVectors = vectors.stream().parallel().map(v -> simdSub(v, globalCentroid)).toList();
-        // TODO compute optimal rotation as well
-        codebooks = createCodebooks(centeredVectors, M, K, subvectorSizes);
+        originalDimension = vectors.get(0).length;
+        subvectorSizes = getSubvectorSizes(originalDimension, M);
+        if (globallyCenter) {
+            globalCentroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
+            // subtract the centroid from each vector
+            vectors = vectors.stream().parallel().map(v -> simdSub(v, globalCentroid)).toList();
+            // TODO compute optimal rotation as well
+        } else {
+            globalCentroid = null;
+        }
+        codebooks = createCodebooks(vectors, M, K, subvectorSizes);
     }
 
     public List<byte[]> encodeAll(List<float[]> vectors) {
@@ -43,12 +49,15 @@ public class PQuantization {
      * @return The quantized value represented as an integer.
      */
     public byte[] encode(float[] vector) {
-        float[] centered = simdSub(vector, globalCentroid);
+        if (globalCentroid != null) {
+            vector = simdSub(vector, globalCentroid);
+        }
 
+        float[] finalVector = vector;
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return closetCentroidIndex(getSubVector(centered, m, subvectorSizes), codebooks.get(m));
+                    return closetCentroidIndex(getSubVector(finalVector, m, subvectorSizes), codebooks.get(m));
                 })
                 .toList();
 
@@ -69,13 +78,15 @@ public class PQuantization {
             offset += subvectorSizes[m];
         }
 
-        // Add back the global centroid to get the approximate original vector.
-        simdAddInPlace(target, globalCentroid);
+        if (globalCentroid != null) {
+            // Add back the global centroid to get the approximate original vector.
+            simdAddInPlace(target, globalCentroid);
+        }
         return target;
     }
 
     public int getDimensions() {
-        return globalCentroid.length;
+        return originalDimension;
     }
 
     static void printCodebooks(List<List<float[]>> codebooks) {
@@ -107,7 +118,7 @@ public class PQuantization {
                     List<float[]> subvectors = vectors.stream().parallel()
                             .map(vector -> getSubVector(vector, m, subvectorSizes))
                             .toList();
-                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, (vector1, vector2) -> VectorUtil.squareDistance(vector1, vector2));
+                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, VectorUtil::squareDistance);
                     return clusterer.cluster(subvectors);
                 })
                 .toList();

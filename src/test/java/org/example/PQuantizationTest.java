@@ -30,7 +30,7 @@ public class PQuantizationTest {
         PQuantization.printCodebooks(result);
 
         // quantize the vectors
-        var quantized = new PQuantization(testVectors, M, K).encodeAll(testVectors);
+        var quantized = new PQuantization(testVectors, M, K, false).encodeAll(testVectors);
         System.out.printf("Quantized: %s%n", quantized.stream().map(Arrays::toString).toList());
     }
 
@@ -194,7 +194,7 @@ public class PQuantizationTest {
 
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
-        PQuantization pq = new PQuantization(testVectors, M, K);
+        PQuantization pq = new PQuantization(testVectors, M, K, false);
 
         for (float[] originalVector : testVectors) {
             byte[] encoded = pq.encode(originalVector);
