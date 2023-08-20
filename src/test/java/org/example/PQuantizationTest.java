@@ -181,4 +181,30 @@ public class PQuantizationTest {
         float result = VectorUtil.squareDistance(v1, v2);
         assertEquals(expected, result, 1e-9);
     }
+
+    @Test
+    public void testEncodeDecodeRoundTrip() {
+        // Using a controlled dataset for testing
+        List<float[]> testVectors = List.of(
+                new float[]{1.0f, 2.0f, 3.0f, 4.0f},
+                new float[]{1.1f, 2.1f, 3.1f, 4.1f},
+                new float[]{2.0f, 3.0f, 4.0f, 5.0f},
+                new float[]{2.1f, 3.1f, 4.1f, 5.1f}
+        );
+
+        int M = 4;
+        int K = 2;  // Since our test dataset is small, let's use a smaller K
+        PQuantization pq = new PQuantization(testVectors, M, K);
+
+        for (float[] originalVector : testVectors) {
+            byte[] encoded = pq.encode(originalVector);
+            float[] target = new float[originalVector.length];
+            float[] decoded = pq.decode(encoded, target);
+
+            for (int i = 0; i < originalVector.length; i++) {
+                assertTrue(Math.abs(originalVector[i] - decoded[i]) < 0.1,
+                        "Difference detected in component " + i + ": Expected " + originalVector[i] + ", but got " + decoded[i]);
+            }
+        }
+    }
 }
