@@ -23,7 +23,7 @@ public class KMeansPlusPlusFloatClusterer {
     private final float[][] centroidDistances;
     private final List<float[]> points;
     private final int[] assignments;
-    private List<float[]> centroids;
+    private final List<float[]> centroids;
 
 
     /**
@@ -52,7 +52,7 @@ public class KMeansPlusPlusFloatClusterer {
         centroidDistances = new float[k][k];
         centroids = chooseInitialCentroids(points);
         assignments = new int[points.size()];
-        assignPointsToClusters(centroids, points, assignments);
+        assignPointsToClusters();
     }
 
     /**
@@ -62,24 +62,25 @@ public class KMeansPlusPlusFloatClusterer {
      */
     public List<float[]> cluster(int maxIterations) {
         for (int i = 0; i < maxIterations; i++) {
-            clusterOnce();
+            int changedCount = clusterOnce();
+            if (changedCount <= 0.01 * points.size()) {
+                break;
+            }
         }
-
         return centroids;
     }
 
-    public void clusterOnce() {
-        List<float[]> newCentroids = new ArrayList<>();
+    public int clusterOnce() {
         for (int j = 0; j < centroids.size(); j++) {
             if (clusterPoints.get(j).isEmpty()) {
                 // Handle empty cluster by re-initializing the centroid
-                newCentroids.add(points.get(random.nextInt(points.size())));
+                centroids.set(j, points.get(random.nextInt(points.size())));
             } else {
-                newCentroids.add(centroidOf(clusterPoints.get(j)));
+                centroids.set(j, centroidOf(clusterPoints.get(j)));
             }
         }
-        assignPointsToClusters(newCentroids, points, assignments);
-        centroids = newCentroids;
+        int changedCount = assignPointsToClusters();
+
         // update centroid distances
         for (int m = 0; m < centroids.size(); m++) {
             for (int n = m + 1; n < centroids.size(); n++) {
@@ -88,6 +89,8 @@ public class KMeansPlusPlusFloatClusterer {
                 centroidDistances[n][m] = distance; // Distance matrix is symmetric
             }
         }
+
+        return changedCount;
     }
 
     /**
@@ -152,7 +155,9 @@ public class KMeansPlusPlusFloatClusterer {
     /**
      * Assigns points to the nearest cluster.  The results are stored as ordinals in `assignments`
      */
-    private void assignPointsToClusters(List<float[]> centroids, List<float[]> points, int[] assignments) {
+    private int assignPointsToClusters() {
+        int changedCount = 0;
+
         for (List<float[]> cluster : clusterPoints) {
             cluster.clear();
         }
@@ -160,9 +165,17 @@ public class KMeansPlusPlusFloatClusterer {
         for (int i = 0; i < points.size(); i++) {
             float[] point = points.get(i);
             int clusterIndex = getNearestCluster(point, centroids);
+
+            // Check if assignment has changed
+            if (assignments[i] != clusterIndex) {
+                changedCount++;
+            }
+
             clusterPoints.get(clusterIndex).add(point);
             assignments[i] = clusterIndex;
         }
+
+        return changedCount;
     }
 
     /**
