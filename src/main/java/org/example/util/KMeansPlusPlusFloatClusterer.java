@@ -53,6 +53,7 @@ public class KMeansPlusPlusFloatClusterer {
         }
         centroidDistances = new float[k][k];
         this.centroids = centroids;
+        updateCentroidDistances();
         assignments = new int[points.size()];
         assignPointsToClusters();
     }
@@ -88,8 +89,12 @@ public class KMeansPlusPlusFloatClusterer {
             }
         }
         int changedCount = assignPointsToClusters();
+        updateCentroidDistances();
 
-        // update centroid distances
+        return changedCount;
+    }
+
+    private void updateCentroidDistances() {
         for (int m = 0; m < centroids.size(); m++) {
             for (int n = m + 1; n < centroids.size(); n++) {
                 float distance = distanceFunction.apply(centroids.get(m), centroids.get(n));
@@ -97,8 +102,6 @@ public class KMeansPlusPlusFloatClusterer {
                 centroidDistances[n][m] = distance; // Distance matrix is symmetric
             }
         }
-
-        return changedCount;
     }
 
     /**
