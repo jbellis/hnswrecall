@@ -25,7 +25,7 @@ public class PQuantizationTest {
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        var result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
+        var result = PQuantization.createEncoder(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
         // Print results for manual inspection
         PQuantization.printCodebooks(result);
 
@@ -139,7 +139,7 @@ public class PQuantizationTest {
         int M = 3;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        var result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
+        var result = PQuantization.createEncoder(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
         assertNotNull(result);
         assertEquals(M, result.size());
         // Print results for manual inspection
@@ -198,8 +198,8 @@ public class PQuantizationTest {
 
         for (float[] originalVector : testVectors) {
             byte[] encoded = pq.encode(originalVector);
-            float[] target = new float[originalVector.length];
-            float[] decoded = pq.decode(encoded, target);
+            float[] decoded = new float[originalVector.length];
+            pq.decode(encoded, decoded);
 
             for (int i = 0; i < originalVector.length; i++) {
                 assertTrue(Math.abs(originalVector[i] - decoded[i]) < 0.1,

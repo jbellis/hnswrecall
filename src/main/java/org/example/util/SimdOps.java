@@ -109,4 +109,37 @@ public class SimdOps {
 
         return result;
     }
+
+    public static float[] simdMultiplyMatrix(float[] vector, float[][] matrix) {
+        if (vector.length != matrix[0].length) {
+            throw new IllegalArgumentException("Vector size must match matrix column count");
+        }
+
+        int rows = matrix.length;
+        int cols = matrix[0].length;
+
+        float[] result = new float[rows];
+
+        int vectorizedLength = (cols / FloatVector.SPECIES_PREFERRED.length()) * FloatVector.SPECIES_PREFERRED.length();
+
+        for (int i = 0; i < rows; i++) {
+            float sum = 0;
+
+            // Vectorized part
+            for (int j = 0; j < vectorizedLength; j += FloatVector.SPECIES_PREFERRED.length()) {
+                var vecPart = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, vector, j);
+                var matrixPart = FloatVector.fromArray(FloatVector.SPECIES_PREFERRED, matrix[i], j);
+                sum += vecPart.mul(matrixPart).reduceLanes(VectorOperators.ADD);
+            }
+
+            // Tail
+            for (int j = vectorizedLength; j < cols; j++) {
+                sum += vector[j] * matrix[i][j];
+            }
+
+            result[i] = sum;
+        }
+
+        return result;
+    }
 }
