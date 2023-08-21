@@ -225,8 +225,8 @@ public class Bench {
 
         var files = List.of(
                 "hdf5/nytimes-256-angular.hdf5",
-                "hdf5/sift-128-euclidean.hdf5",
                 "hdf5/glove-100-angular.hdf5",
+                "hdf5/sift-128-euclidean.hdf5",
                 "hdf5/glove-200-angular.hdf5");
         var mGrid = List.of(8, 16, 24, 32, 48, 64);
         var efConstructionGrid = List.of(60, 160, 200, 400, 600, 800);
