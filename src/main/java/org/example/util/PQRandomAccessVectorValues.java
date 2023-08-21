@@ -6,6 +6,8 @@ import java.util.List;
 
 /**
  * A PQ-backed implementation of the {@link RandomAccessVectorValues} interface.
+ *
+ * TODO this is a quick hack job and should be replaced
  */
 public class PQRandomAccessVectorValues implements RandomAccessVectorValues<float[]> {
     private final List<byte[]> encoded;
