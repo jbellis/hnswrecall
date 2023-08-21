@@ -1,7 +1,6 @@
-package org.example;
+package org.example.util;
 
 import org.apache.lucene.util.VectorUtil;
-import org.example.util.KMeansPlusPlusClusterer;
 
 import java.util.*;
 import java.util.stream.Collectors;

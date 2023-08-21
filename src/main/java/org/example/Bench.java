@@ -8,6 +8,7 @@ import org.apache.lucene.util.VectorUtil;
 import org.apache.lucene.util.hnsw.*;
 import org.example.util.ListRandomAccessVectorValues;
 import org.example.util.PQRandomAccessVectorValues;
+import org.example.util.ProductQuantization;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;

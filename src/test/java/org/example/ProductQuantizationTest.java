@@ -1,6 +1,7 @@
 package org.example;
 
 import org.apache.lucene.util.VectorUtil;
+import org.example.util.ProductQuantization;
 import org.junit.jupiter.api.Test;
 
 import java.util.Arrays;

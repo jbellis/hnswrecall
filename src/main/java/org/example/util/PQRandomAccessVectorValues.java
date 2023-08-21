@@ -1,7 +1,6 @@
 package org.example.util;
 
 import org.apache.lucene.util.hnsw.RandomAccessVectorValues;
-import org.example.ProductQuantization;
 
 import java.util.List;
 
