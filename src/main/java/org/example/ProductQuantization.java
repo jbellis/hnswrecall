@@ -75,19 +75,35 @@ public class ProductQuantization {
 
     /**
      * Computes the dot product of the (approximate) original decoded vector with
-     * another vector, without materializing the decoded vector as a new float[].
-     * Roughly 2x as fast as decode() + dot().
+     * another vector.
+     *
+     * If the PQ does not require centering, this method can compute the dot
+     * product without materializing the decoded vector as a new float[], and will be
+     * roughly 2x as fast as decode() + dot().
      */
     public float decodedDotProduct(byte[] encoded, float[] other) {
-        assert globalCentroid == null;
+        if (globalCentroid != null) {
+            float[] target = new float[originalDimension];
+            decode(encoded, target);
+            return VectorUtil.dotProduct(target, other);
+        }
+
+        var a = dotScratch.get();
         int offset = 0; // starting position in the target array for the current subvector
         int i = 0;
-        var a = dotScratch.get();
         for (int m = 0; m < M; m++) {
-            assert subvectorSizes[m] == 2; // FIXME
             int centroidIndex = Byte.toUnsignedInt(encoded[m]);
             float[] centroidSubvector = codebooks.get(m).get(centroidIndex);
-            a[i++] = dot64(centroidSubvector, 0, other, offset);
+            if (centroidSubvector.length == 2) {
+                a[i++] = dot64(centroidSubvector, 0, other, offset);
+            } else if (centroidSubvector.length == 3) {
+                var b = centroidSubvector;
+                var c = other;
+                a[i++] = b[0] * c[offset] + b[1] * c[offset + 1] + b[2] * c[offset + 2];
+            } else {
+                // TODO support other M / subvectorSizes
+                throw new UnsupportedOperationException("Only 2- and 3-dimensional subvectors are currently supported by decodedDotProduct");
+            }
             offset += subvectorSizes[m];
         }
 
