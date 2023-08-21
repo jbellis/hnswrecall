@@ -84,7 +84,8 @@ public class SimdOps {
     }
 
     /**
-     * Multiplies the two floats from the given arrays and offsets, in place (v1 will be modified)
+     * Computes the dot product of the first two floats in each vector
+     * at the given offsets
      */
     public static float dot64(float[] v1, int offset1, float[] v2, int offset2) {
         var a = FloatVector.fromArray(FloatVector.SPECIES_64, v1, offset1);

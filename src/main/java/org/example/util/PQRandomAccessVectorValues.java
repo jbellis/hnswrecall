@@ -1,7 +1,7 @@
 package org.example.util;
 
 import org.apache.lucene.util.hnsw.RandomAccessVectorValues;
-import org.example.PQuantization;
+import org.example.ProductQuantization;
 
 import java.util.List;
 
@@ -10,9 +10,9 @@ import java.util.List;
  */
 public class PQRandomAccessVectorValues implements RandomAccessVectorValues<float[]> {
     private final List<byte[]> encoded;
-    private final PQuantization pq;
+    private final ProductQuantization pq;
 
-    public PQRandomAccessVectorValues(List<byte[]> vectors, PQuantization pq) {
+    public PQRandomAccessVectorValues(List<byte[]> vectors, ProductQuantization pq) {
         this.encoded = vectors;
         this.pq = pq;
     }
@@ -24,7 +24,7 @@ public class PQRandomAccessVectorValues implements RandomAccessVectorValues<floa
 
     @Override
     public int dimension() {
-        return pq.getDimensions();
+        return pq.vectorDimension();
     }
 
     @Override

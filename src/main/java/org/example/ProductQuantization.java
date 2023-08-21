@@ -1,7 +1,7 @@
 package org.example;
 
 import org.apache.lucene.util.VectorUtil;
-import org.example.util.KMeansPlusPlusFloatClusterer;
+import org.example.util.KMeansPlusPlusClusterer;
 
 import java.util.*;
 import java.util.stream.Collectors;
@@ -9,45 +9,53 @@ import java.util.stream.IntStream;
 
 import static org.example.util.SimdOps.*;
 
-public class PQuantization {
+public class ProductQuantization {
+    private static final int CLUSTERS = 256; // number of clusters per subspace = one byte's worth
+    private static final int K_MEANS_ITERATIONS = 15;
+
     private final List<List<float[]>> codebooks;
     private final int M;
     private final int originalDimension;
     private final float[] globalCentroid;
-    private final int[] subvectorSizes; // added member variable
-    ThreadLocal<float[]> dotScratch;
+    private final int[] subvectorSizes;
+
+    // so that decodedDotProduct doesn't have to allocate a new temporary array every call
+    private final ThreadLocal<float[]> dotScratch;
 
     /**
-     * Constructor for PQQuantization. Initializes the codebooks by clustering
-     * the input data using Product Quantization.
+     * Initializes the codebooks by clustering the input data using Product Quantization.
      *
-     * M = number of subspaces
-     * K = number of clusters per subspace
+     * @param vectors the points to quantize
+     * @param M number of subspaces
+     * @param globallyCenter whether to center the vectors globally before quantization
+     *                       (not recommended when using the quantization for dot product)
      */
-    public PQuantization(List<float[]> vectors, int M, int K, boolean globallyCenter) {
+    public ProductQuantization(List<float[]> vectors, int M, boolean globallyCenter) {
         this.M = M;
         originalDimension = vectors.get(0).length;
         subvectorSizes = getSubvectorSizes(originalDimension, M);
         if (globallyCenter) {
-            globalCentroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
+            globalCentroid = KMeansPlusPlusClusterer.centroidOf(vectors);
             // subtract the centroid from each vector
             vectors = vectors.stream().parallel().map(v -> simdSub(v, globalCentroid)).toList();
-            // TODO compute optimal rotation as well
         } else {
             globalCentroid = null;
         }
-        codebooks = createCodebooks(vectors, M, K, subvectorSizes);
+        codebooks = createCodebooks(vectors, M, subvectorSizes);
         dotScratch = ThreadLocal.withInitial(() -> new float[this.M]);
     }
 
+    /**
+     * Encodes the given vectors using the PQ codebooks.
+     */
     public List<byte[]> encodeAll(List<float[]> vectors) {
         return vectors.stream().parallel().map(this::encode).toList();
     }
 
     /**
-     * Quantizes the input vector using the generated codebooks.
+     * Encodes the input vector using the PQ codebooks.
      *
-     * @return The quantized value represented as an integer.
+     * @return one byte per subspace
      */
     public byte[] encode(float[] vector) {
         if (globalCentroid != null) {
@@ -57,7 +65,7 @@ public class PQuantization {
         float[] finalVector = vector;
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
-                    // find the closest centroid in the corresponding codebook to each subvector
+                    // the closest centroid in the corresponding codebook to each subvector
                     return closetCentroidIndex(getSubVector(finalVector, m, subvectorSizes), codebooks.get(m));
                 })
                 .toList();
@@ -66,9 +74,9 @@ public class PQuantization {
     }
 
     /**
-     * Decodes the quantized representation (byte array) to its approximate original vector.
-     *
-     * @return The approximate original vector.
+     * Computes the dot product of the (approximate) original decoded vector with
+     * another vector, without materializing the decoded vector as a new float[].
+     * Roughly 2x as fast as decode() + dot().
      */
     public float decodedDotProduct(byte[] encoded, float[] other) {
         assert globalCentroid == null;
@@ -89,8 +97,6 @@ public class PQuantization {
 
     /**
      * Decodes the quantized representation (byte array) to its approximate original vector.
-     *
-     * @return The approximate original vector.
      */
     public float[] decode(byte[] encoded, float[] target) {
         int offset = 0; // starting position in the target array for the current subvector
@@ -108,21 +114,24 @@ public class PQuantization {
         return target;
     }
 
-    public int getDimensions() {
+    /**
+     * The dimension of the vectors being quantized.
+     */
+    public int vectorDimension() {
         return originalDimension;
     }
 
+    // for testing
     static void printCodebooks(List<List<float[]>> codebooks) {
         List<List<String>> strings = codebooks.stream()
                 .map(L -> L.stream()
-                        .map(PQuantization::arraySummary)
+                        .map(ProductQuantization::arraySummary)
                         .collect(Collectors.toList()))
                 .toList();
         System.out.printf("Codebooks: [%s]%n", String.join("\n ", strings.stream()
                 .map(L -> "[" + String.join(", ", L) + "]")
                 .toList()));
     }
-
     private static String arraySummary(float[] a) {
         List<String> b = new ArrayList<>();
         for (int i = 0; i < Math.min(4, a.length); i++) {
@@ -134,15 +143,14 @@ public class PQuantization {
         return "[" + String.join(", ", b) + "]";
     }
 
-
-    static List<List<float[]>> createCodebooks(List<float[]> vectors, int M, int K, int[] subvectorSizes) {
+    static List<List<float[]>> createCodebooks(List<float[]> vectors, int M, int[] subvectorSizes) {
         return IntStream.range(0, M).parallel()
                 .mapToObj(m -> {
                     List<float[]> subvectors = vectors.stream().parallel()
                             .map(vector -> getSubVector(vector, m, subvectorSizes))
                             .toList();
-                    var clusterer = new KMeansPlusPlusFloatClusterer(subvectors, K, VectorUtil::squareDistance);
-                    return clusterer.cluster(15);
+                    var clusterer = new KMeansPlusPlusClusterer(subvectors, CLUSTERS, VectorUtil::squareDistance);
+                    return clusterer.cluster(K_MEANS_ITERATIONS);
                 })
                 .toList();
     }
@@ -155,10 +163,6 @@ public class PQuantization {
                 .get();
     }
 
-    /**
-     * convert indexes to bytes, in a manner such that naive euclidean distance will still capture
-     * the correct distance between indexes
-     */
     static byte[] toBytes(List<Integer> indices, int M) {
         byte[] q = new byte[M];
         for (int m = 0; m < M; m++) {
@@ -169,17 +173,17 @@ public class PQuantization {
 
     /**
      * Extracts the m-th subvector from a single vector.
-     *
-     * @return The m-th subvector.
      */
     static float[] getSubVector(float[] vector, int m, int[] subvectorSizes) {
         float[] subvector = new float[subvectorSizes[m]];
-        // calculate the offset for the m-th subvector
         int offset = Arrays.stream(subvectorSizes, 0, m).sum();
         System.arraycopy(vector, offset, subvector, 0, subvectorSizes[m]);
         return subvector;
     }
 
+    /**
+     * Splits the vector dimension into M subvectors of roughly equal size.
+     */
     static int[] getSubvectorSizes(int dimensions, int M) {
         int[] sizes = new int[M];
         int baseSize = dimensions / M;

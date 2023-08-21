@@ -9,7 +9,7 @@ import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-public class PQuantizationTest {
+public class ProductQuantizationTest {
     private static final float EPSILON = 1e-6f;
 
     @Test
@@ -25,12 +25,12 @@ public class PQuantizationTest {
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        var result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
+        var result = ProductQuantization.createCodebooks(testVectors, M, ProductQuantization.getSubvectorSizes(4, M));
         // Print results for manual inspection
-        PQuantization.printCodebooks(result);
+        ProductQuantization.printCodebooks(result);
 
         // quantize the vectors
-        var quantized = new PQuantization(testVectors, M, K, false).encodeAll(testVectors);
+        var quantized = new ProductQuantization(testVectors, M, false).encodeAll(testVectors);
         System.out.printf("Quantized: %s%n", quantized.stream().map(Arrays::toString).toList());
     }
 
@@ -44,7 +44,7 @@ public class PQuantizationTest {
 
         // The closest centroid to [6.0, 7.0] is [5.0, 6.0], which is at index 1.
         float[] subvector = {6.0f, 7.0f};
-        int closestIndex = PQuantization.closetCentroidIndex(subvector, codebook);
+        int closestIndex = ProductQuantization.closetCentroidIndex(subvector, codebook);
         assertEquals(1, closestIndex);
     }
 
@@ -59,13 +59,13 @@ public class PQuantizationTest {
                 List.of(new float[]{5.05f}, new float[]{4.05f}));
 
         int M = 4;
-        int[] sizes = PQuantization.getSubvectorSizes(4, M);
+        int[] sizes = ProductQuantization.getSubvectorSizes(4, M);
 
         var vector = new float[]{1.0f, 2.0f, 3.0f, 4.0f};
         List<Integer> indices = IntStream.range(0, M)
                 .mapToObj(m -> {
                     // find the closest centroid in the corresponding codebook to each subvector
-                    return PQuantization.closetCentroidIndex(PQuantization.getSubVector(vector, m, sizes), codebooks.get(m));
+                    return ProductQuantization.closetCentroidIndex(ProductQuantization.getSubVector(vector, m, sizes), codebooks.get(m));
                 })
                 .toList();
         assertEquals(List.of(0, 0, 0, 1), indices);
@@ -74,8 +74,8 @@ public class PQuantizationTest {
     @Test
     public void testGetSubVector() {
         float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f};
-        assertArrayEquals(new float[]{9.0f}, PQuantization.getSubVector(vector, 0, new int[]{1, 1, 1, 1}), EPSILON);
-        assertArrayEquals(new float[]{11.0f, 12.0f}, PQuantization.getSubVector(vector, 1, new int[]{2, 2}), EPSILON);
+        assertArrayEquals(new float[]{9.0f}, ProductQuantization.getSubVector(vector, 0, new int[]{1, 1, 1, 1}), EPSILON);
+        assertArrayEquals(new float[]{11.0f, 12.0f}, ProductQuantization.getSubVector(vector, 1, new int[]{2, 2}), EPSILON);
     }
 
     @Test
@@ -108,7 +108,7 @@ public class PQuantizationTest {
         );
 
         for (int i = 0; i < testCases.size(); i++) {
-            byte[] result = PQuantization.toBytes(testCases.get(i), 4);
+            byte[] result = ProductQuantization.toBytes(testCases.get(i), 4);
             byte[] expected = expectedResults.get(i);
             if (Arrays.equals(result, expected)) {
                 System.out.println("Test case " + (i + 1) + " passed!");
@@ -122,8 +122,8 @@ public class PQuantizationTest {
     public void testGetSubVectorForUnevenSizes() {
         float[] vector = new float[]{9.0f, 10.0f, 11.0f, 12.0f, 13.0f};
         var sizes = new int[]{3, 2};
-        assertArrayEquals(new float[]{9.0f, 10.0f, 11.0f}, PQuantization.getSubVector(vector, 0, sizes), EPSILON);
-        assertArrayEquals(new float[]{12.0f, 13.0f}, PQuantization.getSubVector(vector, 1, sizes), EPSILON);
+        assertArrayEquals(new float[]{9.0f, 10.0f, 11.0f}, ProductQuantization.getSubVector(vector, 0, sizes), EPSILON);
+        assertArrayEquals(new float[]{12.0f, 13.0f}, ProductQuantization.getSubVector(vector, 1, sizes), EPSILON);
     }
 
     @Test
@@ -139,11 +139,11 @@ public class PQuantizationTest {
         int M = 3;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        var result = PQuantization.createCodebooks(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
+        var result = ProductQuantization.createCodebooks(testVectors, M, ProductQuantization.getSubvectorSizes(5, M));
         assertNotNull(result);
         assertEquals(M, result.size());
         // Print results for manual inspection
-         PQuantization.printCodebooks(result);
+         ProductQuantization.printCodebooks(result);
     }
 
     @Test
@@ -194,7 +194,7 @@ public class PQuantizationTest {
 
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
-        PQuantization pq = new PQuantization(testVectors, M, K, false);
+        ProductQuantization pq = new ProductQuantization(testVectors, M, false);
 
         for (float[] originalVector : testVectors) {
             byte[] encoded = pq.encode(originalVector);

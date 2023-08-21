@@ -15,7 +15,7 @@ import static org.example.util.SimdOps.simdSum;
  * Roughly 3x faster than using the apache commons math implementation (with
  * conversions to double[]).
  */
-public class KMeansPlusPlusFloatClusterer {
+public class KMeansPlusPlusClusterer {
     private final int k;
     private final BiFunction<float[], float[], Float> distanceFunction;
     private final Random random;
@@ -33,7 +33,7 @@ public class KMeansPlusPlusFloatClusterer {
      * @param k number of clusters.
      * @param distanceFunction a function to compute the distance between two points.
      */
-    public KMeansPlusPlusFloatClusterer(List<float[]> points, int k, BiFunction<float[], float[], Float> distanceFunction) {
+    public KMeansPlusPlusClusterer(List<float[]> points, int k, BiFunction<float[], float[], Float> distanceFunction) {
         if (k <= 0) {
             throw new IllegalArgumentException("Number of clusters must be positive.");
         }
@@ -71,10 +71,12 @@ public class KMeansPlusPlusFloatClusterer {
         return centroids;
     }
 
+    // This is broken out as a separate public method to allow implementing OPQ efficiently
     public int clusterOnce() {
         for (int j = 0; j < centroids.size(); j++) {
             if (clusterPoints.get(j).isEmpty()) {
-                // Handle empty cluster by re-initializing the centroid
+                // Handle empty cluster by choosing a random point
+                // (Choosing the highest-variance point is much slower and no better after a couple iterations)
                 centroids.set(j, points.get(random.nextInt(points.size())));
             } else {
                 centroids.set(j, centroidOf(clusterPoints.get(j)));
@@ -207,6 +209,9 @@ public class KMeansPlusPlusFloatClusterer {
         return nearestCluster;
     }
 
+    /**
+     * Computes the centroid of a list of points.
+     */
     public static float[] centroidOf(List<float[]> points) {
         if (points.isEmpty()) {
             throw new IllegalArgumentException("Can't compute centroid of empty points list");

@@ -1,7 +1,7 @@
 package org.example;
 
 import org.apache.lucene.util.VectorUtil;
-import org.example.util.KMeansPlusPlusFloatClusterer;
+import org.example.util.KMeansPlusPlusClusterer;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
@@ -9,7 +9,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 
-public class KMeansPlusPlusFloatClustererTest {
+public class KMeansPlusPlusClustererTest {
     @Test
     public void testMultiplePointsOneCluster() {
         List<float[]> points = List.of(
@@ -19,7 +19,7 @@ public class KMeansPlusPlusFloatClustererTest {
                 new float[] {1.2f, 2.1f}
         );
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 1, this::euclideanDistance);
+        KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 1, this::euclideanDistance);
         List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(1, centroids.size());
@@ -37,7 +37,7 @@ public class KMeansPlusPlusFloatClustererTest {
                 new float[] {9.9f, 10.1f}
         );
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 2, this::euclideanDistance);
+        KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 2, this::euclideanDistance);
         List<float[]> centroids = clusterer.cluster(10);
 
         // Sort centroids based on their first dimension
@@ -53,7 +53,7 @@ public class KMeansPlusPlusFloatClustererTest {
         List<float[]> points = new ArrayList<>();
 
         assertThrows(IllegalArgumentException.class, () -> {
-            KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 2, this::euclideanDistance);
+            KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 2, this::euclideanDistance);
             clusterer.cluster(10);
         });
     }
@@ -63,7 +63,7 @@ public class KMeansPlusPlusFloatClustererTest {
         float[] point = new float[] {1, 2};
         List<float[]> points = Collections.nCopies(100, point);
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 10, this::euclideanDistance);
+        KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 10, this::euclideanDistance);
         List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(10, centroids.size());
@@ -78,7 +78,7 @@ public class KMeansPlusPlusFloatClustererTest {
         points.add(new float[] {1f, 2f});
         points.add(new float[] {3f, 4f});
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 1, this::euclideanDistance);
+        KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 1, this::euclideanDistance);
         List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(1, centroids.size());
@@ -91,7 +91,7 @@ public class KMeansPlusPlusFloatClustererTest {
         points.add(new float[] {1f, 2f});
 
         assertThrows(IllegalArgumentException.class, () -> {
-            KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 2, this::euclideanDistance);
+            KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 2, this::euclideanDistance);
             clusterer.cluster(10);
         });
     }
@@ -104,7 +104,7 @@ public class KMeansPlusPlusFloatClustererTest {
             points.add(point);
         }
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 10, this::euclideanDistance);
+        KMeansPlusPlusClusterer clusterer = new KMeansPlusPlusClusterer(points, 10, this::euclideanDistance);
         List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(10, centroids.size());
