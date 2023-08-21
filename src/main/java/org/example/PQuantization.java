@@ -26,7 +26,7 @@ public class PQuantization {
      * M = number of subspaces
      * K = number of clusters per subspace
      */
-    public PQuantization(List<float[]> vectors, int M, int K, boolean globallyCenter) {
+    public PQuantization(List<float[]> vectors, int M, int K, boolean globallyCenter, boolean globallyRotate) {
         this.M = M;
         originalDimension = vectors.get(0).length;
         subvectorSizes = getSubvectorSizes(originalDimension, M);
@@ -34,11 +34,10 @@ public class PQuantization {
             globalCentroid = KMeansPlusPlusFloatClusterer.centroidOf(vectors);
             // subtract the centroid from each vector
             vectors = vectors.stream().parallel().map(v -> simdSub(v, globalCentroid)).toList();
-            // TODO compute optimal rotation as well
         } else {
             globalCentroid = null;
         }
-        encoder = createEncoder(vectors, M, K, subvectorSizes);
+        encoder = createEncoder(vectors, M, K, subvectorSizes, globallyRotate);
     }
 
     public List<byte[]> encodeAll(List<float[]> vectors) {
@@ -113,9 +112,9 @@ public class PQuantization {
         return "[" + String.join(", ", b) + "]";
     }
 
-    private record Encoder(List<List<float[]>> codebooks, float[][] rotationMatrix, float[][] rotationTransposed) { }
+    public record Encoder(List<List<float[]>> codebooks, float[][] rotationMatrix, float[][] rotationTransposed) { }
 
-    static Encoder createEncoder(List<float[]> vectors, int M, int K, int[] subvectorSizes) {
+    static Encoder createEncoder(List<float[]> vectors, int M, int K, int[] subvectorSizes, boolean globallyRotate) {
         var clusterers = IntStream.range(0, M).parallel()
                 .mapToObj(m -> {
                     List<float[]> subvectors = getSubvectors(vectors, subvectorSizes, m);
@@ -125,7 +124,7 @@ public class PQuantization {
         List<List<float[]>> centroids = clusterers.stream().map(KMeansPlusPlusFloatClusterer::getCentroids).toList();
         float[][] rotationMatrix = null;
         for (int i = 0; i < 15; i++) {
-            rotationMatrix = computeRotationMatrix(vectors, centroids);
+            rotationMatrix = globallyRotate ? computeRotationMatrix(vectors, centroids) : identityMatrix(vectors.get(0).length);
             var RM = rotationMatrix;
             var rotatedVectors = vectors.stream().map(v -> simdMultiplyMatrix(v, RM)).toList();
             centroids = IntStream.range(0, M).parallel()
@@ -137,6 +136,14 @@ public class PQuantization {
                     }).toList();
         }
         return new Encoder(centroids, rotationMatrix, transpose(rotationMatrix));
+    }
+
+    private static float[][] identityMatrix(int dimension) {
+        float[][] matrix = new float[dimension][dimension];
+        for (int i = 0; i < dimension; i++) {
+            matrix[i][i] = 1.0f;
+        }
+        return matrix;
     }
 
     private static List<float[]> getSubvectors(List<float[]> vectors, int[] subvectorSizes, int m) {
@@ -228,7 +235,7 @@ public class PQuantization {
         });
 
         // Compute the correlation matrix between the original data and the quantized data.
-        RealMatrix correlationMatrix = X.transpose().multiply(X); // In place of rotated and quantized data, using just rotated for simplicity.
+        // TODO need to encode all the vectors to do this
 
         // Perform SVD on the correlation matrix.
         SingularValueDecomposition svd = new SingularValueDecomposition(correlationMatrix);

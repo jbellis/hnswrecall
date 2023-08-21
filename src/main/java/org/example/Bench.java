@@ -254,7 +254,7 @@ public class Bench {
 
         var start = System.nanoTime();
         var pqDims = ds.baseVectors.get(0).length / 4;
-        PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256, ds.similarityFunction == VectorSimilarityFunction.EUCLIDEAN);
+        PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256, ds.similarityFunction == VectorSimilarityFunction.EUCLIDEAN, true);
         System.out.format("PQ@%s build %.2fs,%n", pqDims, (System.nanoTime() - start) / 1_000_000_000.0);
 
         start = System.nanoTime();

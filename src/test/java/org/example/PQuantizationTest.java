@@ -3,8 +3,10 @@ package org.example;
 import org.apache.lucene.util.VectorUtil;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Random;
 import java.util.stream.IntStream;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -25,12 +27,12 @@ public class PQuantizationTest {
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        var result = PQuantization.createEncoder(testVectors, M, K, PQuantization.getSubvectorSizes(4, M));
+        var result = PQuantization.createEncoder(testVectors, M, K, PQuantization.getSubvectorSizes(4, M), true);
         // Print results for manual inspection
-        PQuantization.printCodebooks(result);
+        PQuantization.printCodebooks(result.codebooks());
 
         // quantize the vectors
-        var quantized = new PQuantization(testVectors, M, K, false).encodeAll(testVectors);
+        var quantized = new PQuantization(testVectors, M, K, false, false).encodeAll(testVectors);
         System.out.printf("Quantized: %s%n", quantized.stream().map(Arrays::toString).toList());
     }
 
@@ -139,11 +141,11 @@ public class PQuantizationTest {
         int M = 3;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
 
-        var result = PQuantization.createEncoder(testVectors, M, K, PQuantization.getSubvectorSizes(5, M));
+        var result = PQuantization.createEncoder(testVectors, M, K, PQuantization.getSubvectorSizes(5, M), true);
         assertNotNull(result);
-        assertEquals(M, result.size());
+        assertEquals(M, result.codebooks().size());
         // Print results for manual inspection
-         PQuantization.printCodebooks(result);
+         PQuantization.printCodebooks(result.codebooks());
     }
 
     @Test
@@ -194,7 +196,7 @@ public class PQuantizationTest {
 
         int M = 4;
         int K = 2;  // Since our test dataset is small, let's use a smaller K
-        PQuantization pq = new PQuantization(testVectors, M, K, false);
+        PQuantization pq = new PQuantization(testVectors, M, K, false, false);
 
         for (float[] originalVector : testVectors) {
             byte[] encoded = pq.encode(originalVector);
@@ -206,5 +208,115 @@ public class PQuantizationTest {
                         "Difference detected in component " + i + ": Expected " + originalVector[i] + ", but got " + decoded[i]);
             }
         }
+    }
+
+    @Test
+    public void testOPQvsPQRandom() {
+        for (int i = 0; i < 100; i++) {
+            var random = new Random();
+            // Generate the synthetic dataset
+            int numClusters = random.nextInt(5, 500);
+            int pointsPerCluster = random.nextInt(50, 500);
+            List<float[]> testData = generateTestData(numClusters, pointsPerCluster);
+
+            int M = 4;  // Number of subvectors
+            int K = 2;  // Number of centroids per subvector
+
+            // Encode using standard PQ
+            PQuantization pq = new PQuantization(testData, M, K, false, false);
+            float pqError = computeReconstructionError(testData, pq);
+            System.out.println("PQ Reconstruction Error: " + pqError);
+
+            // Encode using OPQ
+            PQuantization opq = new PQuantization(testData, M, K, false, true);
+            float opqError = computeReconstructionError(testData, opq);
+            System.out.println("OPQ Reconstruction Error: " + opqError);
+
+            assertTrue(opqError < pqError, "OPQ error should be lower than PQ error");
+        }
+    }
+
+    @Test
+    public void testOPQvsPQSmall() {
+        List<float[]> testData = generateSmallTestData();
+
+        int M = 4;  // Number of subvectors
+        int K = 2;  // Number of centroids per subvector
+
+        // Encode using standard PQ
+        PQuantization pq = new PQuantization(testData, M, K, false, false);
+        float pqError = computeReconstructionError(testData, pq);
+        System.out.println("PQ Reconstruction Error: " + pqError);
+
+        // Encode using OPQ
+        PQuantization opq = new PQuantization(testData, M, K, false, true);
+        float opqError = computeReconstructionError(testData, opq);
+        System.out.println("OPQ Reconstruction Error: " + opqError);
+
+        assertTrue(opqError < pqError, "OPQ error should be lower than PQ error");
+    }
+
+    public List<float[]> generateSmallTestData() {
+        List<float[]> data = new ArrayList<>();
+
+        // Generate two clusters in 8D:
+        // Cluster 1: elongated along the first half-diagonal.
+        // Cluster 2: elongated along the second half-diagonal.
+
+        // Cluster 1
+        float[] centroid1 = {5, 5, 5, 5, 0, 0, 0, 0};
+        for (int j = 0; j < 50; j++) {
+            float[] point = new float[8];
+            for (int d = 0; d < 4; d++) {
+                point[d] = centroid1[d] + (float) Math.random() - 0.5f;  // Perturb the first four dimensions
+            }
+            data.add(point);
+        }
+
+        // Cluster 2
+        float[] centroid2 = {0, 0, 0, 0, 5, 5, 5, 5};
+        for (int j = 0; j < 50; j++) {
+            float[] point = new float[8];
+            for (int d = 4; d < 8; d++) {
+                point[d] = centroid2[d] + (float) Math.random() - 0.5f;  // Perturb the last four dimensions
+            }
+            data.add(point);
+        }
+
+        return data;
+    }
+
+    private float computeReconstructionError(List<float[]> data, PQuantization quantizer) {
+        float totalError = 0.0f;
+        for (float[] originalVector : data) {
+            byte[] encoded = quantizer.encode(originalVector);
+            float[] decoded = new float[originalVector.length];
+            quantizer.decode(encoded, decoded);
+            totalError += VectorUtil.squareDistance(originalVector, decoded);
+        }
+        return totalError / data.size();
+    }
+
+    public List<float[]> generateTestData(int numClusters, int pointsPerCluster) {
+        Random random = new Random();
+        List<float[]> data = new ArrayList<>();
+
+        // Generate clustered data in 8D
+        for (int i = 0; i < numClusters; i++) {
+            float[] centroid = new float[8];
+            for (int d = 0; d < 8; d++) {
+                centroid[d] = random.nextFloat() * 10;
+            }
+
+            for (int j = 0; j < pointsPerCluster; j++) {
+                float[] point = new float[8];
+                for (int d = 0; d < 8; d++) {
+                    point[d] = centroid[d] + random.nextFloat() - 0.5f;  // Perturb each dimension
+                }
+                data.add(point);
+            }
+        }
+
+        return data;
     }
 }
