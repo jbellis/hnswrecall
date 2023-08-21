@@ -5,10 +5,7 @@ import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
 import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.VectorUtil;
-import org.apache.lucene.util.hnsw.ConcurrentHnswGraphBuilder;
-import org.apache.lucene.util.hnsw.HnswGraph;
-import org.apache.lucene.util.hnsw.HnswGraphSearcher;
-import org.apache.lucene.util.hnsw.NeighborQueue;
+import org.apache.lucene.util.hnsw.*;
 import org.example.util.ListRandomAccessVectorValues;
 import org.example.util.PQRandomAccessVectorValues;
 
@@ -91,14 +88,15 @@ public class Bench {
         assert efSearch >= topK;
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
-        var vvSupplier = ThreadLocal.withInitial(pqvv::copy);
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
-                var vv = vvSupplier.get();
                 NeighborQueue nn;
                 try {
-                    nn = HnswGraphSearcher.search(queryVector, efSearch, vv, VectorEncoding.FLOAT32, VectorSimilarityFunction.EUCLIDEAN, graphSupplier.get(), null, Integer.MAX_VALUE);
+                    NeighborSimilarity.ScoreFunction sf = (other) -> pqvv.decodedScore(other, queryVector);
+                    nn = new HnswSearcher.Builder<>(graphSupplier.get(), pqvv, sf)
+                            .build()
+                            .search(efSearch, null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
@@ -230,8 +228,8 @@ public class Bench {
                 "hdf5/sift-128-euclidean.hdf5",
                 "hdf5/glove-100-angular.hdf5",
                 "hdf5/glove-200-angular.hdf5");
-        var mGrid = List.of(16, 24, 32, 48, 64);
-        var efConstructionGrid = List.of(80, 120, 160, 200, 400, 600, 800);
+        var mGrid = List.of(8, 16, 24, 32, 48, 64);
+        var efConstructionGrid = List.of(60, 160, 200, 400, 600, 800);
         var efSearchFactor = List.of(1, 2);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
@@ -253,7 +251,7 @@ public class Bench {
         var ds = load(f);
 
         var start = System.nanoTime();
-        var pqDims = ds.baseVectors.get(0).length / 4;
+        var pqDims = ds.baseVectors.get(0).length / 2;
         PQuantization pq = new PQuantization(ds.baseVectors, pqDims, 256, ds.similarityFunction == VectorSimilarityFunction.EUCLIDEAN);
         System.out.format("PQ@%s build %.2fs,%n", pqDims, (System.nanoTime() - start) / 1_000_000_000.0);
 

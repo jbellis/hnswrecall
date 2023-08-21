@@ -11,12 +11,10 @@ import java.util.List;
 public class PQRandomAccessVectorValues implements RandomAccessVectorValues<float[]> {
     private final List<byte[]> encoded;
     private final PQuantization pq;
-    private final float[] vector;
 
     public PQRandomAccessVectorValues(List<byte[]> vectors, PQuantization pq) {
         this.encoded = vectors;
         this.pq = pq;
-        this.vector = new float[pq.getDimensions()];
     }
 
     @Override
@@ -31,8 +29,11 @@ public class PQRandomAccessVectorValues implements RandomAccessVectorValues<floa
 
     @Override
     public float[] vectorValue(int targetOrd) {
-        pq.decode(encoded.get(targetOrd), vector);
-        return vector;
+        throw new UnsupportedOperationException();
+    }
+
+    public float decodedScore(int targetOrd, float[] query) {
+        return (1 + pq.decodedDotProduct(encoded.get(targetOrd), query)) / 2;
     }
 
     @Override

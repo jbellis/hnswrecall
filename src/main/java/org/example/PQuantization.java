@@ -7,8 +7,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.example.util.SimdOps.simdAddInPlace;
-import static org.example.util.SimdOps.simdSub;
+import static org.example.util.SimdOps.*;
 
 public class PQuantization {
     private final List<List<float[]>> codebooks;
@@ -16,6 +15,7 @@ public class PQuantization {
     private final int originalDimension;
     private final float[] globalCentroid;
     private final int[] subvectorSizes; // added member variable
+    ThreadLocal<float[]> dotScratch;
 
     /**
      * Constructor for PQQuantization. Initializes the codebooks by clustering
@@ -37,6 +37,7 @@ public class PQuantization {
             globalCentroid = null;
         }
         codebooks = createCodebooks(vectors, M, K, subvectorSizes);
+        dotScratch = ThreadLocal.withInitial(() -> new float[this.M]);
     }
 
     public List<byte[]> encodeAll(List<float[]> vectors) {
@@ -63,6 +64,28 @@ public class PQuantization {
 
         return toBytes(indices, M);
     }
+
+    /**
+     * Decodes the quantized representation (byte array) to its approximate original vector.
+     *
+     * @return The approximate original vector.
+     */
+    public float decodedDotProduct(byte[] encoded, float[] other) {
+        assert globalCentroid == null;
+        int offset = 0; // starting position in the target array for the current subvector
+        int i = 0;
+        var a = dotScratch.get();
+        for (int m = 0; m < M; m++) {
+            assert subvectorSizes[m] == 2; // FIXME
+            int centroidIndex = Byte.toUnsignedInt(encoded[m]);
+            float[] centroidSubvector = codebooks.get(m).get(centroidIndex);
+            a[i++] = dot64(centroidSubvector, 0, other, offset);
+            offset += subvectorSizes[m];
+        }
+
+        return simdSum(a);
+    }
+
 
     /**
      * Decodes the quantized representation (byte array) to its approximate original vector.
