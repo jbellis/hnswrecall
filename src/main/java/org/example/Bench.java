@@ -31,14 +31,14 @@ public class Bench {
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
+        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f, 1.4f);
         int buildThreads = Runtime.getRuntime().availableProcessors();
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         es.shutdown();
         long buildNanos = System.nanoTime() - start;
 
-        int queryRuns = 10;
+        int queryRuns = 2;
         for (int overquery : efSearchOptions) {
             start = System.nanoTime();
             var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
@@ -191,9 +191,9 @@ public class Bench {
                 "hdf5/glove-100-angular.hdf5",
                 "hdf5/glove-200-angular.hdf5",
                 "hdf5/sift-128-euclidean.hdf5");
-        var mGrid = List.of(8, 12, 16, 24, 32, 48, 64);
-        var efConstructionGrid = List.of(60, 80, 100, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 2, 4);
+        var mGrid = List.of(16, 24, 32, 48, 64);
+        var efConstructionGrid = List.of(160, 200, 400, 600, 800);
+        var efSearchFactor = List.of(1, 2);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
