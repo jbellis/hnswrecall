@@ -118,8 +118,8 @@ public class PQuantization {
                     List<float[]> subvectors = vectors.stream().parallel()
                             .map(vector -> getSubVector(vector, m, subvectorSizes))
                             .toList();
-                    var clusterer = new KMeansPlusPlusFloatClusterer(K, 15, VectorUtil::squareDistance);
-                    return clusterer.cluster(subvectors);
+                    var clusterer = new KMeansPlusPlusFloatClusterer(subvectors, K, VectorUtil::squareDistance);
+                    return clusterer.cluster(15);
                 })
                 .toList();
     }

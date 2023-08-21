@@ -8,20 +8,19 @@ import java.util.*;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+
 public class KMeansPlusPlusFloatClustererTest {
     @Test
     public void testMultiplePointsOneCluster() {
-        List<float[]> points = Arrays.asList(
+        List<float[]> points = List.of(
                 new float[] {1, 2},
                 new float[] {1.1f, 2.2f},
                 new float[] {0.9f, 1.8f},
                 new float[] {1.2f, 2.1f}
         );
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(1, 10,
-                this::euclideanDistance);
-
-        List<float[]> centroids = clusterer.cluster(points);
+        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 1, this::euclideanDistance);
+        List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(1, centroids.size());
         assertArrayEquals(new float[] {1.05f, 2.025f}, centroids.get(0), 0.01f);
@@ -29,7 +28,7 @@ public class KMeansPlusPlusFloatClustererTest {
 
     @Test
     public void testDistinctClusters() {
-        List<float[]> points = Arrays.asList(
+        List<float[]> points = List.of(
                 new float[] {1, 1},
                 new float[] {1.1f, 1.2f},
                 new float[] {1.2f, 1.1f},
@@ -38,10 +37,8 @@ public class KMeansPlusPlusFloatClustererTest {
                 new float[] {9.9f, 10.1f}
         );
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(2, 10,
-                this::euclideanDistance);
-
-        List<float[]> centroids = clusterer.cluster(points);
+        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 2, this::euclideanDistance);
+        List<float[]> centroids = clusterer.cluster(10);
 
         // Sort centroids based on their first dimension
         centroids.sort(Comparator.comparingDouble(a -> a[0]));
@@ -55,10 +52,10 @@ public class KMeansPlusPlusFloatClustererTest {
     public void testZeroPoints() {
         List<float[]> points = new ArrayList<>();
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(2, 10,
-                this::euclideanDistance);
-
-        assertThrows(IllegalArgumentException.class, () -> clusterer.cluster(points));
+        assertThrows(IllegalArgumentException.class, () -> {
+            KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 2, this::euclideanDistance);
+            clusterer.cluster(10);
+        });
     }
 
     @Test
@@ -66,10 +63,8 @@ public class KMeansPlusPlusFloatClustererTest {
         float[] point = new float[] {1, 2};
         List<float[]> points = Collections.nCopies(100, point);
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(10, 10,
-                this::euclideanDistance);
-
-        List<float[]> centroids = clusterer.cluster(points);
+        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 10, this::euclideanDistance);
+        List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(10, centroids.size());
         for (float[] centroid : centroids) {
@@ -83,10 +78,8 @@ public class KMeansPlusPlusFloatClustererTest {
         points.add(new float[] {1f, 2f});
         points.add(new float[] {3f, 4f});
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(1, 10,
-                this::euclideanDistance);
-
-        List<float[]> centroids = clusterer.cluster(points);
+        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 1, this::euclideanDistance);
+        List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(1, centroids.size());
         assertArrayEquals(new float[] {2f, 3f}, centroids.get(0), 0.01f);
@@ -98,9 +91,8 @@ public class KMeansPlusPlusFloatClustererTest {
         points.add(new float[] {1f, 2f});
 
         assertThrows(IllegalArgumentException.class, () -> {
-            KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(2, 10,
-                    this::euclideanDistance);
-            clusterer.cluster(points);
+            KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 2, this::euclideanDistance);
+            clusterer.cluster(10);
         });
     }
 
@@ -112,10 +104,8 @@ public class KMeansPlusPlusFloatClustererTest {
             points.add(point);
         }
 
-        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(10, 10,
-                this::euclideanDistance);
-
-        List<float[]> centroids = clusterer.cluster(points);
+        KMeansPlusPlusFloatClusterer clusterer = new KMeansPlusPlusFloatClusterer(points, 10, this::euclideanDistance);
+        List<float[]> centroids = clusterer.cluster(10);
 
         assertEquals(10, centroids.size());
         for (float[] centroid : centroids) {

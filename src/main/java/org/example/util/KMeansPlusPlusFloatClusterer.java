@@ -17,11 +17,13 @@ import static org.example.util.SimdOps.simdSum;
  */
 public class KMeansPlusPlusFloatClusterer {
     private final int k;
-    private final int maxIterations;
     private final BiFunction<float[], float[], Float> distanceFunction;
     private final Random random;
     private final List<List<float[]>> clusterPoints;
     private final float[][] centroidDistances;
+    private final List<float[]> points;
+    private final int[] assignments;
+    private List<float[]> centroids;
 
 
     /**
@@ -29,15 +31,18 @@ public class KMeansPlusPlusFloatClusterer {
      * maximum iterations, and distance function.
      *
      * @param k number of clusters.
-     * @param maxIterations maximum number of iterations for the clustering process.
      * @param distanceFunction a function to compute the distance between two points.
      */
-    public KMeansPlusPlusFloatClusterer(int k, int maxIterations, BiFunction<float[], float[], Float> distanceFunction) {
+    public KMeansPlusPlusFloatClusterer(List<float[]> points, int k, BiFunction<float[], float[], Float> distanceFunction) {
         if (k <= 0) {
             throw new IllegalArgumentException("Number of clusters must be positive.");
         }
+        if (k > points.size()) {
+            throw new IllegalArgumentException("Number of clusters cannot exceed number of points.");
+        }
+
+        this.points = points;
         this.k = k;
-        this.maxIterations = maxIterations;
         this.distanceFunction = distanceFunction;
         this.random = new Random();
         this.clusterPoints = new ArrayList<>();
@@ -45,46 +50,44 @@ public class KMeansPlusPlusFloatClusterer {
             this.clusterPoints.add(new ArrayList<>());
         }
         centroidDistances = new float[k][k];
+        centroids = chooseInitialCentroids(points);
+        assignments = new int[points.size()];
+        assignPointsToClusters(centroids, points, assignments);
     }
 
     /**
      * Performs clustering on the provided set of points.
      *
-     * @param points a list of points to be clustered.
      * @return a list of cluster centroids.
      */
-    public List<float[]> cluster(List<float[]> points) {
-        if (k > points.size()) {
-            throw new IllegalArgumentException("Number of clusters cannot exceed number of points.");
-        }
-
-        List<float[]> centroids = chooseInitialCentroids(points);
-        int[] assignments = new int[points.size()];
-        assignPointsToClusters(centroids, points, assignments);
-
+    public List<float[]> cluster(int maxIterations) {
         for (int i = 0; i < maxIterations; i++) {
-            List<float[]> newCentroids = new ArrayList<>();
-            for (int j = 0; j < centroids.size(); j++) {
-                if (clusterPoints.get(j).isEmpty()) {
-                    // Handle empty cluster by re-initializing the centroid
-                    newCentroids.add(points.get(random.nextInt(points.size())));
-                } else {
-                    newCentroids.add(centroidOf(clusterPoints.get(j)));
-                }
-            }
-            assignPointsToClusters(newCentroids, points, assignments);
-            centroids = newCentroids;
-            // update centroid distances
-            for (int m = 0; m < centroids.size(); m++) {
-                for (int n = m + 1; n < centroids.size(); n++) {
-                    float distance = distanceFunction.apply(centroids.get(m), centroids.get(n));
-                    centroidDistances[m][n] = distance;
-                    centroidDistances[n][m] = distance; // Distance matrix is symmetric
-                }
-            }
+            clusterOnce();
         }
 
         return centroids;
+    }
+
+    public void clusterOnce() {
+        List<float[]> newCentroids = new ArrayList<>();
+        for (int j = 0; j < centroids.size(); j++) {
+            if (clusterPoints.get(j).isEmpty()) {
+                // Handle empty cluster by re-initializing the centroid
+                newCentroids.add(points.get(random.nextInt(points.size())));
+            } else {
+                newCentroids.add(centroidOf(clusterPoints.get(j)));
+            }
+        }
+        assignPointsToClusters(newCentroids, points, assignments);
+        centroids = newCentroids;
+        // update centroid distances
+        for (int m = 0; m < centroids.size(); m++) {
+            for (int n = m + 1; n < centroids.size(); n++) {
+                float distance = distanceFunction.apply(centroids.get(m), centroids.get(n));
+                centroidDistances[m][n] = distance;
+                centroidDistances[n][m] = distance; // Distance matrix is symmetric
+            }
+        }
     }
 
     /**
