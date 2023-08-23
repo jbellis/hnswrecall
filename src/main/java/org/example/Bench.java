@@ -3,9 +3,11 @@ package org.example;
 import io.jhdf.HdfFile;
 import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
-import org.apache.lucene.util.NamedThreadFactory;
 import org.apache.lucene.util.VectorUtil;
-import org.apache.lucene.util.hnsw.*;
+import org.apache.lucene.util.hnsw.HnswGraph;
+import org.apache.lucene.util.hnsw.HnswGraphBuilder;
+import org.apache.lucene.util.hnsw.HnswGraphSearcher;
+import org.apache.lucene.util.hnsw.NeighborQueue;
 import org.example.util.ListRandomAccessVectorValues;
 
 import java.io.IOException;
@@ -13,7 +15,6 @@ import java.io.UncheckedIOException;
 import java.nio.file.Paths;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.LongAdder;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
@@ -26,24 +27,20 @@ public class Bench {
     private static int threadCount = Runtime.getRuntime().availableProcessors();
 
     private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds)
-            throws ExecutionException, InterruptedException
-    {
+            throws ExecutionException, InterruptedException, IOException {
         var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
         var topK = ds.groundTruth.get(0).size();
 
         // build the graphs on multiple threads
         var start = System.nanoTime();
-        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
-        int buildThreads = threadCount;
-        var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
-        var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
-        es.shutdown();
+        var builder = HnswGraphBuilder.create(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 42);
+        var hnsw = builder.build(ravv.copy());
         long buildNanos = System.nanoTime() - start;
 
         int queryRuns = 1;
         for (int overquery : efSearchOptions) {
             start = System.nanoTime();
-            var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
+            var pqr = performQueries(ds, ravv, () -> hnsw, topK, topK * overquery, queryRuns);
             var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
             System.out.format("HNSW   M=%d ef=%d: top %d/%d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
                     M, efConstruction, topK, overquery, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - start) / 1_000_000_000.0, pqr.nodesVisited);
@@ -187,8 +184,7 @@ public class Bench {
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
-        threadCount = Integer.parseInt(args[0]);
-        System.out.println("Using " + threadCount + " threads");
+        System.out.println("Using " + 0 + " threads");
 
         var files = List.of(
                 "hdf5/sift-128-euclidean.hdf5");
@@ -203,7 +199,7 @@ public class Bench {
         }
     }
 
-    private static void gridSearch(String f, List<Integer> mGrid, List<Integer> efConstructionGrid, List<Integer> efSearchFactor) throws ExecutionException, InterruptedException {
+    private static void gridSearch(String f, List<Integer> mGrid, List<Integer> efConstructionGrid, List<Integer> efSearchFactor) throws ExecutionException, InterruptedException, IOException {
         var ds = load(f);
         for (int M : mGrid) {
             for (int beamWidth : efConstructionGrid) {
