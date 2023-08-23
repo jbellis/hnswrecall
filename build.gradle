@@ -30,8 +30,8 @@ task runSimple(type: JavaExec) {
 task runBench(type: JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = 'org.example.Bench'
-    if (project.hasProperty('datasetName')) {
-        args datasetName
+    if (project.hasProperty('threadCount')) {
+        args threadCount
     }
     jvmArgs '--add-modules=jdk.incubator.vector', '-Xmx32G', "-ea"
     // jvmArgs '-XX:+FlightRecorder', '-XX:StartFlightRecording:filename=flight.jfr'

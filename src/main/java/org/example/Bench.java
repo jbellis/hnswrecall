@@ -23,6 +23,8 @@ import java.util.stream.IntStream;
  * Tests HNSW against vectors from the Texmex dataset
  */
 public class Bench {
+    private static int threadCount = Runtime.getRuntime().availableProcessors();
+
     private static void testRecall(int M, int efConstruction, List<Integer> efSearchOptions, DataSet ds)
             throws ExecutionException, InterruptedException
     {
@@ -32,13 +34,13 @@ public class Bench {
         // build the graphs on multiple threads
         var start = System.nanoTime();
         var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f);
-        int buildThreads = Runtime.getRuntime().availableProcessors();
+        int buildThreads = threadCount;
         var es = Executors.newFixedThreadPool(buildThreads, new NamedThreadFactory("Concurrent HNSW builder"));
         var hnsw = builder.buildAsync(ravv.copy(), es, buildThreads).get();
         es.shutdown();
         long buildNanos = System.nanoTime() - start;
 
-        int queryRuns = 10;
+        int queryRuns = 1;
         for (int overquery : efSearchOptions) {
             start = System.nanoTime();
             var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK * overquery, queryRuns);
@@ -185,26 +187,17 @@ public class Bench {
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
         System.out.println("Heap space available is " + Runtime.getRuntime().maxMemory());
+        threadCount = Integer.parseInt(args[0]);
+        System.out.println("Using " + threadCount + " threads");
 
         var files = List.of(
-                "hdf5/nytimes-256-angular.hdf5",
-                "hdf5/glove-100-angular.hdf5",
-                "hdf5/glove-200-angular.hdf5",
                 "hdf5/sift-128-euclidean.hdf5");
-        var mGrid = List.of(8, 12, 16, 24, 32, 48, 64);
-        var efConstructionGrid = List.of(60, 80, 100, 120, 160, 200, 400, 600, 800);
-        var efSearchFactor = List.of(1, 2, 4);
+        var mGrid = List.of(16);
+        var efConstructionGrid = List.of(120);
+        var efSearchFactor = List.of(1);
         // large files not yet supported
 //                "hdf5/deep-image-96-angular.hdf5",
 //                "hdf5/gist-960-euclidean.hdf5");
-        for (var f : files) {
-            gridSearch(f, mGrid, efConstructionGrid, efSearchFactor);
-        }
-
-        // tiny dataset, don't waste time building a huge index
-        files = List.of("hdf5/fashion-mnist-784-euclidean.hdf5");
-        mGrid = List.of(8, 12, 16, 24);
-        efConstructionGrid = List.of(40, 60, 80, 100, 120, 160);
         for (var f : files) {
             gridSearch(f, mGrid, efConstructionGrid, efSearchFactor);
         }
