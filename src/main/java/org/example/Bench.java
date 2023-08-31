@@ -3,11 +3,12 @@ package org.example;
 import io.jhdf.HdfFile;
 import org.apache.lucene.index.VectorEncoding;
 import org.apache.lucene.index.VectorSimilarityFunction;
+import org.apache.lucene.search.KnnCollector;
+import org.apache.lucene.search.TopDocs;
 import org.apache.lucene.util.VectorUtil;
 import org.apache.lucene.util.hnsw.HnswGraph;
 import org.apache.lucene.util.hnsw.HnswGraphBuilder;
 import org.apache.lucene.util.hnsw.HnswGraphSearcher;
-import org.apache.lucene.util.hnsw.NeighborQueue;
 import org.example.util.ListRandomAccessVectorValues;
 
 import java.io.IOException;
@@ -67,10 +68,10 @@ public class Bench {
         return resultSet.stream().filter(gt::contains).count();
     }
 
-    private static long topKCorrect(int topK, NeighborQueue nn, Set<Integer> gt) {
-        var a = new int[nn.size()];
+    private static long topKCorrect(int topK, TopDocs nn, Set<Integer> gt) {
+        var a = new int[nn.scoreDocs.length];
         for (int j = a.length - 1; j >= 0; j--) {
-            a[j] = nn.pop();
+            a[j] = nn.scoreDocs[j].doc;
         }
         return topKCorrect(topK, a, gt);
     }
@@ -80,16 +81,16 @@ public class Bench {
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
         for (int k = 0; k < queryRuns; k++) {
-            IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
+            IntStream.range(0, ds.queryVectors.size()).forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
-                NeighborQueue nn;
+                KnnCollector nn;
                 try {
                     nn = HnswGraphSearcher.search(queryVector, efSearch, ravv, VectorEncoding.FLOAT32, ds.similarityFunction, graphSupplier.get(), null, Integer.MAX_VALUE);
                 } catch (IOException e) {
                     throw new UncheckedIOException(e);
                 }
                 var gt = ds.groundTruth.get(i);
-                var n = topKCorrect(topK, nn, gt);
+                var n = topKCorrect(topK, nn.topDocs(), gt);
                 topKfound.add(n);
                 nodesVisited.add(nn.visitedCount());
             });
@@ -187,7 +188,10 @@ public class Bench {
         System.out.println("Using " + 0 + " threads");
 
         var files = List.of(
-                "hdf5/sift-128-euclidean.hdf5");
+        "hdf5/nytimes-256-angular.hdf5",
+        "hdf5/glove-100-angular.hdf5",
+        "hdf5/glove-200-angular.hdf5",
+        "hdf5/sift-128-euclidean.hdf5");
         var mGrid = List.of(16);
         var efConstructionGrid = List.of(120);
         var efSearchFactor = List.of(1);
