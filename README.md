@@ -1,17 +1,5 @@
-# HNSW demos
+TODO up-to-date README
 
-This provides two classes illustrating the usage of Lucene's HNSW approximate nearest-neighbor (ANN) index.
-See the [Lucene JIRA issue](https://issues.apache.org/jira/browse/LUCENE-9004) and [the Elastic blog post](https://www.elastic.co/blog/introducing-approximate-nearest-neighbor-search-in-elasticsearch-8-0) for more background, 
-and [the original paper](https://arxiv.org/pdf/1603.09320.pdf) for how it works.
+tldr run the Bench class against hdf5 datasets that you can find at https://github.com/erikbern/ann-benchmarks
 
-The classes provided are `SimpleExample`, which creates and searches a random graph, and `Texmex`, which tests the recall performance against a dataset with ground truth (i.e. known, exact nearest neighbors) precomputed for each query.
-
-## Usage
-
-```bash
-$ ./gradlew runSimple
-$ ./gradlew runTexmex -PsiftName=siftsmall
-```
-
-The Texmex datasets may be found [here](http://corpus-texmex.irisa.fr/). 
-The Texmex class expects to find the data files in a subdirectory of the current working directory, as extracted from the dataset `tgz` archive (e.g. `siftsmall`, `sift`, etc.). The `siftsmall` dataset runs in about 2 seconds. The `sift` dataset runs in about 10.5 minutes.
+Requires JBE's concurrent Lucene code which you can get from https://github.com/jbellis/lucene/tree/concurrent5, then run `gradlew mavenToLocal`
