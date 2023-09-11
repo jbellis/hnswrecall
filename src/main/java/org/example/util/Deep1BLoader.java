@@ -10,21 +10,21 @@ import java.util.ArrayList;
 import java.util.HashSet;
 
 public class Deep1BLoader {
-    public static ArrayList<float[]> readFvecs(String filePath) throws IOException {
-        var vectors = new ArrayList<float[]>();
+    public static float[][] readFBin(String filePath, int count) throws IOException {
+        var vectors = new float[count][];
         try (var dis = new DataInputStream(new BufferedInputStream(new FileInputStream(filePath)))) {
-            while (dis.available() > 0) {
-                var dimension = Integer.reverseBytes(dis.readInt());
-                assert dimension > 0 : dimension;
+            int n = Integer.reverseBytes(dis.readInt());
+            System.out.printf("File contains %d vectors; reading %d%n", n, count);
+            var dimension = Integer.reverseBytes(dis.readInt());
+            for (int i = 0; i < count; i++) {
                 var buffer = new byte[dimension * Float.BYTES];
                 dis.readFully(buffer);
                 var byteBuffer = ByteBuffer.wrap(buffer).order(ByteOrder.LITTLE_ENDIAN);
 
                 var vector = new float[dimension];
-                for (var i = 0; i < dimension; i++) {
-                    vector[i] = byteBuffer.getFloat();
-                }
-                vectors.add(vector);
+                var floatBuffer = byteBuffer.asFloatBuffer();
+                floatBuffer.get(vector);
+                vectors[i] = (vector);
             }
         }
         return vectors;
