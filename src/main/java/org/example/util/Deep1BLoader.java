@@ -9,7 +9,7 @@ import java.nio.ByteOrder;
 import java.util.ArrayList;
 import java.util.HashSet;
 
-public class SiftLoader {
+public class Deep1BLoader {
     public static ArrayList<float[]> readFvecs(String filePath) throws IOException {
         var vectors = new ArrayList<float[]>();
         try (var dis = new DataInputStream(new BufferedInputStream(new FileInputStream(filePath)))) {
