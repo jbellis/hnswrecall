@@ -240,7 +240,7 @@ public class Bench {
         var baseVectors = Deep1BLoader.readFBin("bigann-data/deep1b/base.1B.fbin.crop_nb_10000000", 10_000_000);
         var queryVectors = Deep1BLoader.readFBin("bigann-data/deep1b/query.public.10K.fbin", 10_000);
         var gt = Deep1BLoader.readGT("bigann-data/deep1b/deep-10M");
-        return new DataSet(VectorSimilarityFunction.DOT_PRODUCT, baseVectors, queryVectors, gt);
+        return new DataSet(VectorSimilarityFunction.EUCLIDEAN, baseVectors, queryVectors, gt);
     }
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {
