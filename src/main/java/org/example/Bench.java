@@ -52,58 +52,11 @@ import static org.apache.lucene.util.StringHelper.ID_LENGTH;
  */
 public class Bench {
     private static void testRecall(int M, int efConstruction, DataSet ds) throws IOException {
-        var ravv = new ListRandomAccessVectorValues(ds.baseVectors, ds.baseVectors.get(0).length);
-        var topK = ds.groundTruth.get(0).size();
-
-        // build the graphs on multiple threads
-        var startBuild = System.nanoTime();
-        var builder = new ConcurrentHnswGraphBuilder<>(ravv, VectorEncoding.FLOAT32, ds.similarityFunction, M, efConstruction, 1.5f, 1.4f);
-        AtomicInteger completed = new AtomicInteger();
-        IntStream.range(0, ds.baseVectors.size()).parallel().forEach(i -> {
-            try {
-                builder.addGraphNode(i, ravv);
-            } catch (IOException e) {
-                throw new UncheckedIOException(e);
-            }
-            var n = completed.incrementAndGet();
-            if (n % 10_000 == 0) {
-                long elapsedTime = System.nanoTime() - startBuild;
-                long estimatedRemainingTime = (long)((ds.baseVectors.size() - n) * ((double)elapsedTime / n));
-                // Convert time from nanoseconds to seconds
-                double elapsedTimeInSeconds = elapsedTime / 1_000_000_000.0;
-                double estimatedRemainingTimeInSeconds = estimatedRemainingTime / 1_000_000_000.0;
-
-                System.out.printf("%,d completed in %.2f seconds. Estimated remaining time: %.2f seconds%n", n, elapsedTimeInSeconds, estimatedRemainingTimeInSeconds);
-            }
-        });
-        var hnsw = builder.getGraph();
-        IntStream.range(0, ds.baseVectors.size()).parallel().forEach(i -> {
-            for (int L = 0; L < hnsw.numLevels(); L++) {
-                var neighbors = hnsw.getNeighbors(L, i);
-                if (neighbors != null) {
-                    neighbors.cleanup();
-                }
-            }
-        });
-        long buildNanos = System.nanoTime() - startBuild;
-
-        // query on-heap
-        int queryRuns = 2;
-        var startQuery = System.nanoTime();
-        var pqr = performQueries(ds, ravv, hnsw::getView, topK, topK, queryRuns);
-        var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-        System.out.format("Heap   M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. %s nodes visited%n",
-                M, efConstruction, topK, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - startQuery) / 1_000_000_000.0, pqr.nodesVisited);
-
-        // write graph AFTER on-heap queries, since writing will destructively modify the graph being written
-        writeGraph(Path.of("luceneindex/deep1B-10M"), ds, hnsw);
-
-        startQuery = System.nanoTime();
+        var topK = 100;
+        var queryRuns = 1;
         try (var reader = openReader(new File("luceneindex/deep1B-10M"), ds)) {
-            pqr = queryReader(ds, reader, topK, topK, queryRuns);
-            recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
-            System.out.format("Disk   M=%d ef=%d: top %d recall %.4f, build %.2fs, query %.2fs. ? nodes visited%n",
-                              M, efConstruction, topK, recall, buildNanos / 1_000_000_000.0, (System.nanoTime() - startQuery) / 1_000_000_000.0);
+            var pqr = queryReader(ds, reader, topK, topK, queryRuns);
+            var recall = ((double) pqr.topKFound) / (queryRuns * ds.queryVectors.size() * topK);
         }
     }
 
@@ -111,6 +64,8 @@ public class Bench {
         assert efSearch >= topK;
         LongAdder topKfound = new LongAdder();
         LongAdder nodesVisited = new LongAdder();
+        var startQuery = System.nanoTime();
+        AtomicInteger completed = new AtomicInteger();
         for (int k = 0; k < queryRuns; k++) {
             IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
                 var queryVector = ds.queryVectors.get(i);
@@ -123,6 +78,9 @@ public class Bench {
                 var gt = ds.groundTruth.get(i);
                 var n = topKCorrect(topK, docs, gt);
                 topKfound.add(n);
+                var elapsed = System.nanoTime() - startQuery;
+                var rate = completed.incrementAndGet() / (elapsed / 1_000_000_000.0);
+                System.out.println(String.format("Completed %s queries at %.2f qps", completed.get(), rate));
             });
         }
         return new ResultSummary((int) topKfound.sum(), (int) nodesVisited.sum());
@@ -135,28 +93,10 @@ public class Bench {
         FieldInfos fieldInfos = new FieldInfos(Collections.singletonList(fieldInfo).toArray(new FieldInfo[0]));
         String segmentName = vectorPath.getName();
         var segmentId = new byte[ID_LENGTH];
-        SegmentInfo segmentInfo = new SegmentInfo(directory, Version.LATEST, Version.LATEST, segmentName, ds.baseVectors.size(), false, Lucene95Codec.getDefault(), Collections.emptyMap(), segmentId, Collections.emptyMap(), null);
+        SegmentInfo segmentInfo = new SegmentInfo(directory, Version.LATEST, Version.LATEST, segmentName, 100_000_000, false, Lucene95Codec.getDefault(), Collections.emptyMap(), segmentId, Collections.emptyMap(), null);
 
         SegmentReadState state = new SegmentReadState(directory, segmentInfo, fieldInfos, IOContext.DEFAULT);
         return new Lucene95HnswVectorsFormat(16, 100).fieldsReader(state);
-    }
-
-    private static byte[] writeGraph(Path vectorPath, DataSet ds, ConcurrentOnHeapHnswGraph hnsw) throws IOException {
-        // table directory
-        Directory directory = FSDirectory.open(vectorPath.getParent());
-        // segment name in SAI naming pattern, e.g. ca-3g5d_1t56_18d8122br2d3mg6twm-bti-SAI+ba+table_00_val_idx+Vector.db
-        String segmentName = vectorPath.getFileName().toString();
-
-        var segmentId = new byte[ID_LENGTH];
-        SegmentInfo segmentInfo = new SegmentInfo(directory, Version.LATEST, Version.LATEST, segmentName, -1, false, Lucene95Codec.getDefault(), Collections.emptyMap(), segmentId, Collections.emptyMap(), null);
-        SegmentWriteState state = new SegmentWriteState(InfoStream.getDefault(), directory, segmentInfo, null, null, IOContext.DEFAULT);
-        var fieldInfo = createFieldInfoForVector(ds);
-        try (var writer = new Lucene95HnswVectorsWriter(hnsw, ds.baseVectors, state, 16, 100)) {
-            writer.addField(fieldInfo);
-            writer.flush(hnsw.size(), null);
-            writer.finish();
-        }
-        return segmentId;
     }
 
     private static FieldInfo createFieldInfoForVector(DataSet ds)
@@ -179,7 +119,7 @@ public class Bench {
 
         return new FieldInfo(name, number, storeTermVector, omitNorms, storePayloads, indexOptions, docValues,
                              dvGen, attributes, pointDimensionCount, pointIndexDimensionCount, pointNumBytes,
-                             ds.baseVectors.get(0).length, vectorEncoding, vectorSimilarityFunction, softDeletesField);
+                             96, vectorEncoding, vectorSimilarityFunction, softDeletesField);
     }
 
     private record ResultSummary(int topKFound, int nodesVisited) { }
@@ -212,35 +152,12 @@ public class Bench {
         return topKCorrect(topK, a, gt);
     }
 
-    private static ResultSummary performQueries(DataSet ds, ListRandomAccessVectorValues ravv, Supplier<HnswGraph> graphSupplier, int topK, int efSearch, int queryRuns) {
-        assert efSearch >= topK;
-        LongAdder topKfound = new LongAdder();
-        LongAdder nodesVisited = new LongAdder();
-        for (int k = 0; k < queryRuns; k++) {
-            IntStream.range(0, ds.queryVectors.size()).parallel().forEach(i -> {
-                var queryVector = ds.queryVectors.get(i);
-                NeighborQueue nn;
-                try {
-                    nn = HnswGraphSearcher.search(queryVector, efSearch, ravv, VectorEncoding.FLOAT32, ds.similarityFunction, graphSupplier.get(), null, Integer.MAX_VALUE);
-                } catch (IOException e) {
-                    throw new UncheckedIOException(e);
-                }
-                var gt = ds.groundTruth.get(i);
-                var n = topKCorrect(topK, nn, gt);
-                topKfound.add(n);
-                nodesVisited.add(nn.visitedCount());
-            });
-        }
-        return new ResultSummary((int) topKfound.sum(), (int) nodesVisited.sum());
-    }
-
     record DataSet(VectorSimilarityFunction similarityFunction, List<float[]> baseVectors, List<float[]> queryVectors, List<? extends Set<Integer>> groundTruth) { }
 
     private static DataSet load() throws IOException {
-        var baseVectors = Deep1BLoader.readFBin("bigann-data/deep1b/base.1B.fbin.crop_nb_10000000", 10_000_000);
         var queryVectors = Deep1BLoader.readFBin("bigann-data/deep1b/query.public.10K.fbin", 10_000);
-        var gt = Deep1BLoader.readGT("bigann-data/deep1b/deep-10M");
-        return new DataSet(VectorSimilarityFunction.EUCLIDEAN, baseVectors, queryVectors, gt);
+        var gt = Deep1BLoader.readGT("bigann-data/deep1b/deep-100M");
+        return new DataSet(VectorSimilarityFunction.EUCLIDEAN, null, queryVectors, gt);
     }
 
     public static void main(String[] args) throws IOException, ExecutionException, InterruptedException {

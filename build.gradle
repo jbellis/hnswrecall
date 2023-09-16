@@ -33,6 +33,6 @@ task runBench(type: JavaExec) {
     if (project.hasProperty('datasetName')) {
         args datasetName
     }
-    jvmArgs '--add-modules=jdk.incubator.vector', '-Xmx32G', "-ea"
+    jvmArgs '--add-modules=jdk.incubator.vector', '-Xmx16G', "-ea"
     // jvmArgs '-XX:+FlightRecorder', '-XX:StartFlightRecording:filename=flight.jfr'
 }
